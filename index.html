@@ -1,0 +1,1195 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="description" content="로댕의 청동 조각 '생각하는 사람'을 360도로 살펴보며 단서를 찾는 중학생용 3D 미술 방탈출">
+<title>생각하는 사람의 방</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Gowun+Batang:wght@400;700&family=Gowun+Dodum&family=Nanum+Pen+Script&display=swap">
+<style>
+/* Layout: full-bleed WebGL museum room, thin bronze HUD on the edges, notes open as paper cards. Single dark look on purpose (a night gallery). */
+:root{
+  --night:#0b0c10; --ink:#f1e9da; --muted:#bdb4a6; --gold:#d9a95b; --bronze:#b07a3e;
+  --paper:#efe5cf; --paper-ink:#2c2418; --paper-line:#c4ab7c; --ok:#a8d89a; --bad:#ff9a8a;
+  --panel:rgba(14,13,12,.84); --line:rgba(217,169,91,.42);
+  --display:'Gowun Batang','Nanum Myeongjo','AppleMyungjo',serif;
+  --ui:'Gowun Dodum','Apple SD Gothic Neo','Malgun Gothic',sans-serif;
+  --hand:'Nanum Pen Script','Gowun Dodum',cursive;
+  color-scheme:dark;
+}
+[hidden]{display:none!important}
+html,body{height:100%}
+body{margin:0;background:var(--night);color:var(--ink);font-family:var(--ui);overflow:hidden;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  -webkit-user-select:none;user-select:none;-webkit-tap-highlight-color:transparent}
+#gl{position:fixed;inset:0;width:100%;height:100%;display:block;touch-action:none;cursor:grab}
+#gl.drag{cursor:grabbing}
+#vig{position:fixed;inset:0;pointer-events:none;z-index:1;background:radial-gradient(120% 95% at 50% 45%,transparent 55%,rgba(3,3,6,.6) 100%)}
+button{font:inherit;color:inherit}
+button:focus-visible,input:focus-visible{outline:2px solid var(--gold);outline-offset:2px}
+
+/* HUD */
+.hud{position:fixed;z-index:5}
+#hudTL{top:calc(14px + env(safe-area-inset-top,0px));left:max(16px,env(safe-area-inset-left,0px));display:flex;flex-direction:column;gap:8px;max-width:56vw}
+.roomNo{font-size:12px;letter-spacing:.2em;color:var(--gold)}
+.roomName{font-family:var(--display);font-size:clamp(20px,2.6vw,28px);font-weight:700;text-shadow:0 2px 14px rgba(0,0,0,.8);line-height:1.2}
+.tabs{display:flex;gap:6px;flex-wrap:wrap}
+.tab{height:34px;padding:0 12px;border-radius:999px;border:1px solid var(--line);background:var(--panel);font-size:13px;cursor:pointer;white-space:nowrap}
+.tab[aria-current="true"]{border-color:var(--gold);box-shadow:inset 0 0 0 1px var(--gold)}
+.tab.done{background:var(--gold);color:#22180a;border-color:var(--gold)}
+.tab.done::after{content:" ✓"}
+#hudTR{top:calc(14px + env(safe-area-inset-top,0px));right:max(16px,env(safe-area-inset-right,0px));display:flex;gap:8px;align-items:center;flex-wrap:wrap;justify-content:flex-end;max-width:42vw}
+.chip{font-size:14px;background:var(--panel);border:1px solid var(--line);border-radius:999px;padding:0 14px;min-height:40px;cursor:pointer;display:inline-flex;align-items:center;gap:6px}
+.chip[aria-pressed="true"]{border-color:var(--gold);color:var(--gold)}
+#timer{cursor:default;font-variant-numeric:tabular-nums;letter-spacing:.04em}
+#hudB{bottom:calc(16px + env(safe-area-inset-bottom,0px));left:50%;transform:translateX(-50%);width:min(680px,calc(100vw - 32px));display:flex;flex-direction:column;align-items:center;gap:10px}
+#guide{background:var(--panel);border:1px solid var(--line);border-radius:14px;padding:10px 18px;font-size:15px;line-height:1.55;text-align:center;text-wrap:balance}
+.parts{display:flex;flex-wrap:wrap;gap:6px;justify-content:center}
+.part{font-size:13px;padding:4px 10px;border-radius:999px;border:1px dashed rgba(217,169,91,.45);color:var(--muted);background:rgba(14,13,12,.6)}
+.part.on{border-style:solid;border-color:var(--gold);background:var(--gold);color:#22180a}
+#nextBtn{min-height:46px;padding:0 22px;border-radius:999px;border:none;background:var(--gold);color:#22180a;font-weight:700;font-size:16px;cursor:pointer;box-shadow:0 0 24px rgba(217,169,91,.45);animation:pulse 1.8s ease-in-out infinite}
+@keyframes pulse{50%{box-shadow:0 0 40px rgba(217,169,91,.85)}}
+#toast{position:fixed;z-index:15;left:50%;top:20%;transform:translate(-50%,0);background:rgba(14,13,12,.92);border:1px solid var(--line);border-radius:12px;padding:10px 18px;font-size:15px;line-height:1.5;max-width:min(520px,calc(100vw - 32px));text-align:center;pointer-events:none;transition:opacity .35s, transform .35s}
+#toast.off{opacity:0;transform:translate(-50%,8px)}
+
+/* light dial */
+#lightPanel{position:fixed;z-index:6;left:50%;transform:translateX(-50%);bottom:calc(150px + env(safe-area-inset-bottom,0px));width:min(420px,calc(100vw - 32px));background:var(--panel);border:1px solid var(--line);border-radius:16px;padding:12px 16px 10px}
+#lightPanel .lpTop{display:flex;justify-content:space-between;align-items:baseline;font-size:14px;margin-bottom:6px}
+#lightPanel .lpTop b{color:var(--gold);font-weight:400;letter-spacing:.1em}
+#lightPanel input{width:100%;accent-color:var(--gold);height:32px;margin:0}
+#lightPanel .ends{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+
+/* fade */
+#fade{position:fixed;inset:0;z-index:30;background:#050506;opacity:0;pointer-events:none;transition:opacity .6s ease}
+#fade.on{opacity:1;pointer-events:auto}
+
+/* start screen */
+#start{position:fixed;inset:0;z-index:25;display:flex;align-items:center;
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  background:linear-gradient(90deg,rgba(7,6,5,.9) 0%,rgba(7,6,5,.62) 42%,rgba(7,6,5,0) 78%)}
+.startBox{max-width:520px;display:flex;flex-direction:column;gap:16px;padding-left:clamp(0px,5vw,64px);padding-block:24px}
+.eyebrow{font-size:13px;letter-spacing:.24em;color:var(--gold)}
+.startBox h1{font-family:var(--display);font-size:clamp(36px,6vw,64px);line-height:1.08;margin:0;font-weight:700;text-wrap:balance;text-shadow:0 4px 30px rgba(0,0,0,.7)}
+.startBox h1 em{font-style:normal;color:var(--gold)}
+.story{font-family:var(--display);font-size:17px;line-height:1.75;margin:0;color:#e8dfcd;max-width:34em}
+.field{display:flex;flex-direction:column;gap:6px;font-size:14px;color:var(--muted)}
+.field input{font:inherit;font-size:18px;color:var(--ink);background:rgba(255,255,255,.06);border:1px solid var(--line);border-radius:12px;padding:12px 14px;max-width:320px;-webkit-user-select:text;user-select:text}
+.row{display:flex;gap:10px;flex-wrap:wrap;align-items:center}
+.btn{min-height:48px;padding:0 24px;border-radius:999px;border:none;background:var(--gold);color:#22180a;font-weight:700;font-size:17px;cursor:pointer}
+.btn:disabled{background:#4a3f30;color:#b9ab95;cursor:progress}
+.btn.ghost{background:transparent;color:var(--ink);border:1px solid var(--line);font-weight:400}
+.btn.small{min-height:40px;font-size:15px;padding:0 18px}
+.note{font-size:13px;color:var(--muted);line-height:1.6}
+.cast{height:4px;border-radius:2px;background:rgba(255,255,255,.08);overflow:hidden;max-width:320px}
+.cast i{display:block;height:100%;width:0;background:linear-gradient(90deg,#ff7a2a,#ffc45a);transition:width .2s}
+
+/* modal */
+#modal{position:fixed;inset:0;z-index:20;display:grid;place-items:center;background:rgba(3,3,6,.45);
+  padding:calc(16px + env(safe-area-inset-top,0px)) max(16px,env(safe-area-inset-right,0px)) calc(16px + env(safe-area-inset-bottom,0px)) max(16px,env(safe-area-inset-left,0px))}
+.card{width:min(580px,100%);max-height:calc(100dvh - 48px);overflow:auto;background:var(--panel);border:1px solid var(--line);border-radius:18px;padding:24px 24px 20px;box-shadow:0 20px 60px rgba(0,0,0,.55);backdrop-filter:blur(6px);animation:rise .35s ease}
+@keyframes rise{from{opacity:0;transform:translateY(12px)}}
+.card h2{font-family:var(--display);font-size:24px;margin:0 0 4px;text-wrap:balance}
+.card .sub{font-size:13px;letter-spacing:.14em;color:var(--gold);margin-bottom:12px}
+.card p{line-height:1.7;margin:8px 0;font-size:16px}
+.card .task{border-left:3px solid var(--gold);padding:8px 12px;background:rgba(217,169,91,.09);border-radius:0 10px 10px 0}
+.card ul,.card ol{margin:8px 0;padding-left:20px;line-height:1.7}
+.card.paper{background:var(--paper);color:var(--paper-ink);border-color:var(--paper-line);backdrop-filter:none;
+  background-image:repeating-linear-gradient(transparent 0 37px,rgba(120,90,40,.16) 37px 38px)}
+.card.paper .sub{color:#7f5418}
+.hand{font-family:var(--hand);font-size:28px;line-height:1.36}
+.hand mark{background:none;color:#8a3d12;border-bottom:2px solid rgba(138,61,18,.45)}
+.src{font-size:12px;color:#6b5a3a;margin-top:6px}
+.btnRow{display:flex;gap:10px;flex-wrap:wrap;justify-content:flex-end;margin-top:18px}
+.fact{display:grid;grid-template-columns:auto 1fr;gap:4px 14px;font-size:14px;background:rgba(255,255,255,.05);border-radius:12px;padding:12px 14px;margin:10px 0}
+.fact dt{color:var(--gold)}
+.fact dd{margin:0}
+.timeline{list-style:none;padding:0!important;margin:10px 0;display:flex;flex-direction:column;gap:8px}
+.timeline li{display:grid;grid-template-columns:52px 1fr;gap:12px;align-items:baseline}
+.timeline b{font-family:var(--display);color:var(--gold);font-size:18px;font-variant-numeric:tabular-nums}
+.timeline span{font-size:14px;line-height:1.55}
+.plaque{font-family:var(--display);text-align:center;padding:14px;border-radius:10px;background:linear-gradient(135deg,#5a3d22,#2e2012);color:#e9c98f;letter-spacing:.18em;box-shadow:inset 0 0 0 2px rgba(233,201,143,.25);margin:10px 0}
+.plaque .y{font-size:40px;letter-spacing:.12em}
+/* lock */
+.lock{display:grid;grid-template-columns:1fr 1fr 1.4fr;gap:12px;margin:14px 0}
+.dial{display:flex;flex-direction:column;align-items:center;gap:8px;background:rgba(255,255,255,.05);border:1px solid var(--line);border-radius:14px;padding:12px 6px}
+.dial label{font-size:13px;color:var(--muted);text-align:center;line-height:1.35;min-height:2.7em}
+.dial .ctl{display:flex;align-items:center;gap:6px}
+.dial input{width:2.2em;text-align:center;font-family:var(--display);font-size:32px;background:transparent;border:none;color:var(--ink);font-variant-numeric:tabular-nums;-webkit-user-select:text;user-select:text}
+.dial.wide input{width:3.2em}
+.dial button{width:36px;height:36px;border-radius:50%;border:1px solid var(--line);background:rgba(0,0,0,.25);cursor:pointer;font-size:18px;flex:none}
+.shake{animation:shake .45s}
+@keyframes shake{20%{transform:translateX(-8px)}40%{transform:translateX(8px)}60%{transform:translateX(-5px)}80%{transform:translateX(5px)}}
+.hints{display:flex;flex-direction:column;gap:8px;margin:10px 0}
+.hints div{background:rgba(255,255,255,.06);border-radius:10px;padding:10px 12px;line-height:1.6}
+.hints h3{font-size:14px;color:var(--gold);margin:12px 0 2px;font-weight:400;letter-spacing:.08em}
+.big{font-family:var(--display);font-size:clamp(32px,5vw,44px);margin:4px 0;color:var(--gold)}
+@media (max-width:560px){
+  #hudTL{max-width:62vw}
+  .lock{gap:6px;grid-template-columns:1fr 1fr}
+  .dial.wide{grid-column:1 / -1}
+  .dial input{font-size:26px}
+  .card{padding:20px 16px 16px}
+  #lightPanel{bottom:calc(178px + env(safe-area-inset-bottom,0px))}
+}
+@media (prefers-reduced-motion:reduce){#nextBtn{animation:none}.card{animation:none}}
+</style>
+</head>
+<body>
+
+<canvas id="gl" aria-label="로댕의 생각하는 사람이 있는 3D 전시실. 끌어서 조각 주위를 돌고, 눌러서 조사합니다."></canvas>
+<div id="vig"></div>
+
+<div class="hud" id="hudTL" hidden>
+  <div class="roomNo">밤의 전시실 · 단서 3개</div>
+  <div class="roomName">생각하는 사람의 방</div>
+  <div class="tabs" id="tabs"></div>
+</div>
+<div class="hud" id="hudTR" hidden>
+  <span class="chip" id="timer" aria-label="걸린 시간">00:00</span>
+  <button class="chip" id="viewBtn" type="button">전체 보기</button>
+  <button class="chip" id="lightBtn" type="button" aria-pressed="false">조명</button>
+  <button class="chip" id="hintBtn" type="button">힌트</button>
+  <button class="chip" id="soundBtn" type="button" aria-pressed="true">소리 켬</button>
+</div>
+<div class="hud" id="hudB" hidden>
+  <button id="nextBtn" type="button" hidden>출구로 가기</button>
+  <div id="guide"></div>
+</div>
+<div id="lightPanel" hidden>
+  <div class="lpTop"><span>조명 방향</span><b id="lightDeg">정면</b></div>
+  <input id="lightRange" type="range" min="-180" max="180" step="1" value="20" aria-label="조명 방향">
+  <div class="ends"><span>왼쪽 뒤</span><span>왼쪽</span><span>정면</span><span>오른쪽</span><span>오른쪽 뒤</span></div>
+</div>
+<div id="toast" class="off" role="status"></div>
+
+<div id="start">
+  <div class="startBox">
+    <div class="eyebrow">미술 방탈출 · 오귀스트 로댕</div>
+    <h1><em>생각하는</em><br>사람의 방</h1>
+    <p class="story">늦은 밤 미술관, 마지막 관람객인 여러분 뒤로 전시실 문이 철컥 잠겼어요. 방 한가운데에서 청동 조각 하나가 턱을 괸 채 생각에 잠겨 있어요. 조각과 이 방에 숨은 단서 세 개를 찾아 출구의 자물쇠를 여세요.</p>
+    <label class="field" for="team">모둠 이름
+      <input id="team" maxlength="12" placeholder="예: 청동 모둠" autocomplete="off">
+    </label>
+    <div class="row">
+      <button class="btn" id="startBtn" type="button" disabled>조각을 주조하는 중…</button>
+      <button class="btn ghost" id="resumeBtn" type="button" hidden>이어 하기</button>
+    </div>
+    <div class="cast" aria-hidden="true"><i id="castBar"></i></div>
+    <div class="note">조각 주위를 끌어서 360도로 돌아보고, 조각을 눌러 자세히 살펴요.<br>태블릿 가로 화면 · 약 15~20분 · 소리를 켜면 더 좋아요.</div>
+  </div>
+</div>
+
+<div id="modal" hidden><div class="card" id="card" role="dialog" aria-modal="true"></div></div>
+<div id="fade"></div>
+
+<script>
+/* Sculpting worker: SDF anatomy -> sparse surface nets mesh. Runs as a Web Worker (or in Node for tests). */
+function SCULPT_WORKER(){
+'use strict';
+/* ---------- vec ---------- */
+const V=(x,y,z)=>[x,y,z];
+const add=(a,b)=>[a[0]+b[0],a[1]+b[1],a[2]+b[2]];
+const sub=(a,b)=>[a[0]-b[0],a[1]-b[1],a[2]-b[2]];
+const mul=(a,s)=>[a[0]*s,a[1]*s,a[2]*s];
+const dot=(a,b)=>a[0]*b[0]+a[1]*b[1]+a[2]*b[2];
+const cross=(a,b)=>[a[1]*b[2]-a[2]*b[1],a[2]*b[0]-a[0]*b[2],a[0]*b[1]-a[1]*b[0]];
+const len=a=>Math.hypot(a[0],a[1],a[2]);
+const nrm=a=>{const l=len(a)||1;return [a[0]/l,a[1]/l,a[2]/l]};
+const lerp=(a,b,t)=>[a[0]+(b[0]-a[0])*t,a[1]+(b[1]-a[1])*t,a[2]+(b[2]-a[2])*t];
+const madd=(o,...terms)=>{let r=o.slice();for(let i=0;i<terms.length;i+=2)r=add(r,mul(terms[i],terms[i+1]));return r};
+/* rotate vector v about unit axis k by angle a (Rodrigues) */
+function rot(v,k,a){const c=Math.cos(a),s=Math.sin(a);return add(add(mul(v,c),mul(cross(k,v),s)),mul(k,dot(k,v)*(1-c)))}
+/* orthonormal frame from forward-ish z axis and an up hint */
+function frame(o,z,yHint){z=nrm(z);let x=nrm(cross(yHint,z));const y=cross(z,x);return {o,x,y,z,p(a,b,c){return [o[0]+x[0]*a+y[0]*b+z[0]*c,o[1]+x[1]*a+y[1]*b+z[1]*c,o[2]+x[2]*a+y[2]*b+z[2]*c]},d(a,b,c){return nrm([x[0]*a+y[0]*b+z[0]*c,x[1]*a+y[1]*b+z[1]*c,x[2]*a+y[2]*b+z[2]*c])}}}
+/* frame from explicit axes (x right, y up, z fwd) */
+function frameXYZ(o,x,y){x=nrm(x);let z=nrm(cross(x,y));y=cross(z,x);return {o,x,y,z,p(a,b,c){return [o[0]+x[0]*a+y[0]*b+z[0]*c,o[1]+x[1]*a+y[1]*b+z[1]*c,o[2]+x[2]*a+y[2]*b+z[2]*c]},d(a,b,c){return nrm([x[0]*a+y[0]*b+z[0]*c,x[1]*a+y[1]*b+z[1]*c,x[2]*a+y[2]*b+z[2]*c])}}}
+
+/* ---------- noise ---------- */
+function hash3(x,y,z){let h=(x*374761393+y*668265263+z*1274126177)|0;h=Math.imul(h^(h>>>13),1274126177);h^=h>>>16;return (h&0xffffff)/0xffffff}
+function vnoise(x,y,z){const ix=Math.floor(x),iy=Math.floor(y),iz=Math.floor(z);let fx=x-ix,fy=y-iy,fz=z-iz;fx=fx*fx*(3-2*fx);fy=fy*fy*(3-2*fy);fz=fz*fz*(3-2*fz);
+  const a=hash3(ix,iy,iz),b=hash3(ix+1,iy,iz),c=hash3(ix,iy+1,iz),d=hash3(ix+1,iy+1,iz),e=hash3(ix,iy,iz+1),f=hash3(ix+1,iy,iz+1),g=hash3(ix,iy+1,iz+1),h=hash3(ix+1,iy+1,iz+1);
+  const x1=a+(b-a)*fx,x2=c+(d-c)*fx,x3=e+(f-e)*fx,x4=g+(h-g)*fx;const y1=x1+(x2-x1)*fy,y2=x3+(x4-x3)*fy;return (y1+(y2-y1)*fz)*2-1}
+function fbm(x,y,z,o){let s=0,a=.5;for(let i=0;i<o;i++){s+=a*vnoise(x,y,z);x=x*2.03+17.1;y=y*2.03+3.7;z=z*2.03+9.3;a*=.5}return s}
+
+/* ---------- primitives ---------- */
+/* t:0 roundcone, 1 ellipsoid, 2 sphere, 3 rounded box, 4 hair ellipsoid (noisy) */
+function P_cone(a,b,r1,r2,k){const ba=sub(b,a),l2=dot(ba,ba),rr=r1-r2;return {t:0,a,ba,l2,rr,a2:l2-rr*rr,il2:1/l2,r1,r2,k:k==null?.02:k,bc:lerp(a,b,.5),br:Math.sqrt(l2)/2+Math.max(r1,r2)}}
+function P_ell(c,ax,ay,az,rx,ry,rz,k){return {t:1,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),rx,ry,rz,k:k==null?.02:k,bc:c,br:Math.max(rx,ry,rz)}}
+function P_sph(c,r,k){return {t:2,c,r,k:k==null?.02:k,bc:c,br:r}}
+function P_box(c,ax,ay,az,hx,hy,hz,r,k){return {t:3,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),hx,hy,hz,r,k:k==null?.02:k,bc:c,br:Math.hypot(hx,hy,hz)+r}}
+function evalP(P,x,y,z){
+  switch(P.t){
+  case 0:{const pax=x-P.a[0],pay=y-P.a[1],paz=z-P.a[2],ba=P.ba,l2=P.l2;const yy=pax*ba[0]+pay*ba[1]+paz*ba[2],zz=yy-l2;
+    const qx=pax*l2-ba[0]*yy,qy=pay*l2-ba[1]*yy,qz=paz*l2-ba[2]*yy;const x2=qx*qx+qy*qy+qz*qz,y2=yy*yy*l2,z2=zz*zz*l2,rr=P.rr,a2=P.a2,il2=P.il2;
+    const kk=Math.sign(rr)*rr*rr*x2;
+    if(Math.sign(zz)*a2*z2>kk)return Math.sqrt(x2+z2)*il2-P.r2;
+    if(Math.sign(yy)*a2*y2<kk)return Math.sqrt(x2+y2)*il2-P.r1;
+    return (Math.sqrt(x2*a2*il2)+yy*rr)*il2-P.r1}
+  case 1:case 4:{const dx=x-P.c[0],dy=y-P.c[1],dz=z-P.c[2];const u=(dx*P.ax[0]+dy*P.ax[1]+dz*P.ax[2]),v=(dx*P.ay[0]+dy*P.ay[1]+dz*P.ay[2]),w=(dx*P.az[0]+dy*P.az[1]+dz*P.az[2]);
+    const a=u/P.rx,b=v/P.ry,c=w/P.rz;const k0=Math.sqrt(a*a+b*b+c*c);const a1=a/P.rx,b1=b/P.ry,c1=c/P.rz;const k1=Math.sqrt(a1*a1+b1*b1+c1*c1)||1e-9;
+    let d=k0*(k0-1)/k1;if(P.t===4&&d<.03){d-=P.amp*(.55+.45*vnoise(x*P.f,y*P.f,z*P.f))*(.6+.4*vnoise(x*P.f*2.3+5,y*P.f*2.3,z*P.f*2.3))}return d}
+  case 2:{const dx=x-P.c[0],dy=y-P.c[1],dz=z-P.c[2];return Math.sqrt(dx*dx+dy*dy+dz*dz)-P.r}
+  case 3:{const dx=x-P.c[0],dy=y-P.c[1],dz=z-P.c[2];const u=Math.abs(dx*P.ax[0]+dy*P.ax[1]+dz*P.ax[2])-P.hx,v=Math.abs(dx*P.ay[0]+dy*P.ay[1]+dz*P.ay[2])-P.hy,w=Math.abs(dx*P.az[0]+dy*P.az[1]+dz*P.az[2])-P.hz;
+    const mu=Math.max(u,0),mv=Math.max(v,0),mw=Math.max(w,0);return Math.sqrt(mu*mu+mv*mv+mw*mw)+Math.min(Math.max(u,v,w),0)-P.r}
+  }return 1e9}
+function smin(a,b,k){if(k<=0)return Math.min(a,b);const h=Math.max(k-Math.abs(a-b),0)/k;return Math.min(a,b)-h*h*k*.25}
+function smax(a,b,k){return -smin(-a,-b,k)}
+
+/* evaluate a "model": {add:[prims], cut:[prims], disp:fn|null} restricted to lists */
+function evalList(M,adds,cuts,x,y,z){let d=1e9;for(let i=0;i<adds.length;i++){const P=adds[i];d=smin(d,evalP(P,x,y,z),P.k)}
+  for(let i=0;i<cuts.length;i++){const P=cuts[i];d=smax(d,-evalP(P,x,y,z),P.k)}
+  if(M.disp)d+=M.disp(x,y,z,d);return d}
+
+/* ======================================================================
+   THE THINKER (Le Penseur) — anatomy built in metres, figure faces +z,
+   +x is the figure's LEFT. Right elbow rests on the LEFT thigh.
+   ====================================================================== */
+function thinker(){
+  const A=[],C=[];const add_=p=>{A.push(p);return p};const cut=p=>{C.push(p);return p};
+  const UP=V(0,1,0);
+  /* ---- skeleton ---- */
+  const J={
+    pelvis:V(0,.64,-.09),hipR:V(-.105,.60,-.05),hipL:V(.105,.61,-.05),
+    kneeR:V(-.205,.585,.40),kneeL:V(.15,.605,.405),
+    ankR:V(-.235,.115,.30),ankL:V(.19,.14,.455),
+    L3:V(0,.76,-.075),T12:V(.012,.87,-.005),T6:V(.03,.98,.07),C7:V(.042,1.02,.195),
+    shR:V(-.185,.94,.23),shL:V(.215,.985,.05),
+    elR:V(.10,.72,.27),elL:V(.335,.72,.165),
+    wrR:V(.05,.94,.40),wrL:V(.195,.705,.405),
+  };
+  /* ---- head frame: bowed ~38deg, slight yaw to his left & tilt ---- */
+  const pitch=.66,yaw=.12,roll=-.06;
+  let hUp=V(0,1,0),hFw=V(0,0,1),hRt=V(1,0,0);
+  const ax1=V(1,0,0);hUp=rot(hUp,ax1,pitch);hFw=rot(hFw,ax1,pitch);
+  hUp=rot(hUp,UP,yaw);hFw=rot(hFw,UP,yaw);hRt=nrm(cross(hUp,hFw));
+  hUp=rot(hUp,hFw,roll);hRt=rot(hRt,hFw,roll);
+  // right hand frame first: the head is placed so the chin rests on the curled fingers
+  function handFrame(W,hz,hy,thumbWorld){const F=frameXYZ(W,cross(hy,hz),hy);const sg=dot(F.x,thumbWorld)>0?1:-1;const Fx=mul(F.x,sg);
+    return {o:W,x:Fx,y:F.y,z:F.z,p(a,b,c){return madd(W,Fx,a,F.y,b,F.z,c)}}}
+  const HS=1.24;
+  const faR=nrm(sub(J.wrR,J.elR));const rhz=nrm(madd([0,0,0],faR,.35,V(0,1,-.28),1));
+  const rhy=nrm(sub(V(0,.05,1),mul(rhz,dot(V(0,.05,1),rhz))));
+  const RH=handFrame(J.wrR,rhz,rhy,V(-1,0,0));const KN=RH.p(0,0,.098*HS);
+  const chin=add(KN,V(.004,.038,-.04));
+  // head local: x=+left, y=up, z=forward ; origin=cranium centre. chin at (0,-.105,.078) local
+  const hoff=madd([0,0,0],hRt,0,hUp,-.105,hFw,.078);const hc=sub(chin,hoff);
+  const H={o:hc,x:hRt,y:hUp,z:hFw,p(a,b,c){return madd(hc,hRt,a,hUp,b,hFw,c)}};
+  J.head=hc;
+
+  /* ===== TORSO ===== */
+  // chest frame: yawed to the left, pitched forward
+  const chestC=V(.03,.915,.1);
+  let cUp=nrm(sub(J.C7,J.L3)),cRt=nrm(sub(J.shL,J.shR));cRt=nrm(sub(cRt,mul(cUp,dot(cRt,cUp))));const cFw=nrm(cross(cRt,cUp));
+  const T={o:chestC,x:cRt,y:cUp,z:cFw,p(a,b,c){return madd(chestC,cRt,a,cUp,b,cFw,c)}};
+  // ribcage
+  add_(P_ell(T.p(0,0,-.015),cRt,cUp,cFw,.2,.2,.15,.045));
+  // abdomen frame (less twisted)
+  const abC=V(.012,.775,.035);let aUp=nrm(sub(J.T12,J.pelvis));let aRt=nrm(lerp(V(1,0,0),cRt,.45));aRt=nrm(sub(aRt,mul(aUp,dot(aRt,aUp))));const aFw=nrm(cross(aRt,aUp));
+  const Ab={p(a,b,c){return madd(abC,aRt,a,aUp,b,aFw,c)}};
+  add_(P_ell(Ab.p(0,.0,-.01),aRt,aUp,aFw,.15,.13,.12,.06));
+  // pelvis & glutes
+  add_(P_ell(V(0,.655,-.09),V(1,0,0),nrm(V(0,1,-.35)),nrm(V(0,.35,1)),.172,.115,.128,.06));
+  add_(P_ell(V(-.095,.58,-.115),V(1,0,0),UP,V(0,0,1),.12,.075,.105,.07));
+  add_(P_ell(V(.095,.587,-.115),V(1,0,0),UP,V(0,0,1),.12,.075,.105,.07));
+  // rectus abdominis: compressed, folding forward (3 rows)
+  for(let r=0;r<3;r++){for(const s of [-1,1]){add_(P_ell(Ab.p(s*.042,.075-r*.06,.085-r*.004),aRt,aUp,aFw,.04,.032,.03,.03))}}
+  // lower belly fold (crease where torso bends)
+  cut(P_ell(Ab.p(0,-.105,.115),aRt,aUp,aFw,.12,.012,.03,.025));
+  // obliques / love-handle masses
+  for(const s of [-1,1])add_(P_ell(Ab.p(s*.118,-.03,.0),aRt,aUp,aFw,.05,.085,.08,.05));
+  // pectorals
+  for(const s of [-1,1]){const pc=T.p(s*.085,.085,.11);const fib=nrm(sub(s<0?J.shR:J.shL,pc));
+    add_(P_ell(pc,fib,cross(cFw,fib),cFw,.1,.082,.045,.04))}
+  // pec lower border crease
+  cut(P_ell(T.p(0,.0,.142),cRt,cUp,cFw,.15,.012,.02,.02));
+  // serratus digitations on the left side (visible because torso twists)
+  for(let i=0;i<3;i++)add_(P_ell(T.p(.14,.03-i*.045,.065),cRt,cUp,cFw,.018,.016,.025,.02));
+  // back: one broad rounded shell first, then muscles laid on it with wide blends
+  add_(P_ell(T.p(0,.0,-.06),cRt,cUp,cFw,.19,.23,.12,.12));                 // the arched back as a single mass
+  add_(P_ell(Ab.p(0,.05,-.05),aRt,aUp,aFw,.145,.16,.085,.12));                // lower back: fills the waist so it doesn't step in
+  // erector spinae: thick only at the lumbar, fading up into the back
+  {const dir=nrm(sub(J.T12,J.L3)),side=nrm(cross(dir,cFw));
+    for(const s of [-1,1])add_(P_ell(madd(lerp(J.L3,J.T12,.55),side,s*.045,cFw,-.075),dir,side,cross(dir,side),.14,.036,.03,.07));
+    }
+  for(const s of [-1,1]){const sh=s<0?J.shR:J.shL;
+    // scapula: broad flat plate
+    add_(P_ell(T.p(s*.1,.07,-.1),cRt,cUp,cFw,.085,.09,.02,.09));
+    // latissimus: wide sheet from lower back to armpit
+    add_(P_ell(lerp(T.p(s*.13,-.04,-.07),sh,.25),nrm(sub(sh,T.p(s*.05,-.12,-.09))),cRt,cFw,.18,.07,.04,.11));
+    // trapezius: slopes from the neck down to the shoulder, never above it
+    {const a0=madd(J.C7,cFw,-.035,cUp,.01),a1=madd(sh,cUp,-.005,cFw,-.03);const ax=nrm(sub(a1,a0));const nn=nrm(sub(cUp,mul(ax,dot(cUp,ax))));
+      add_(P_ell(lerp(a0,a1,.45),ax,nn,cross(ax,nn),len(sub(a1,a0))*.55,.035,.06,.08))}
+    // deltoid
+    const dc=madd(sh,cUp,.01,cRt,s*.022);add_(P_ell(dc,cRt,cUp,cFw,.076,.082,.08,.045));
+    // teres / infraspinatus rounding the shoulder from behind
+    add_(P_ell(T.p(s*.15,.07,-.05),cRt,cUp,cFw,.04,.045,.028,.08));
+  }
+  // thoracic paraspinals: low ridges that leave a soft valley over the spine
+  for(const s of [-1,1])add_(P_ell(T.p(s*.038,-.01,-.165),cRt,cUp,cFw,.03,.15,.022,.06));
+  // flanks: keep the waist full from behind
+  for(const s of [-1,1])add_(P_ell(Ab.p(s*.13,.07,.0),aRt,aUp,aFw,.05,.11,.06,.08));
+  // middle trapezius between the shoulder blades
+  add_(P_ell(T.p(0,.1,-.1),cRt,cUp,cFw,.1,.075,.035,.07));
+  // clavicles
+  for(const s of [-1,1]){const sh=s<0?J.shR:J.shL;add_(P_cone(T.p(s*.02,.155,.06),madd(sh,cFw,.03,cUp,.02),.016,.018,.02))}
+
+  /* ===== NECK ===== */
+  const neckTop=H.p(0,-.06,-.03);
+  add_(P_cone(madd(J.C7,cFw,-.015,cUp,-.01),neckTop,.072,.056,.045));
+  // sternocleidomastoids (mastoid -> sternal notch)
+  const notch=T.p(0,.155,.095);
+  for(const s of [-1,1]){const mast=H.p(s*.06,-.035,-.03);add_(P_cone(mast,madd(notch,cRt,s*.012),.02,.017,.025))}
+  // Adam's apple
+  add_(P_ell(lerp(notch,H.p(0,-.1,.04),.55),cRt,cUp,cFw,.014,.02,.014,.015));
+
+  /* ===== HEAD ===== */
+  const hp=H.p.bind(H);
+  // cranium + occiput
+  add_(P_ell(hp(0,.015,-.012),hRt,hUp,hFw,.088,.1,.104,.02));
+  add_(P_ell(hp(0,-.02,-.05),hRt,hUp,hFw,.075,.07,.07,.03));
+  // hair: noisy cap
+  add_(P_ell(hp(0,.02,-.016),hRt,hUp,hFw,.09,.097,.104,.015));
+  // hair: short rough locks modelled one by one (golden-spiral over the scalp)
+  {const N=230,ga=Math.PI*(3-Math.sqrt(5));let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+    for(let i=0;i<N;i++){const yy=1-2*(i+.5)/N,rr=Math.sqrt(1-yy*yy),th=i*ga;const dx=Math.cos(th)*rr,dz=Math.sin(th)*rr,dy=yy;
+      // local direction on the cranium: (dx,dy,dz) in (x,up,fwd)
+      const front=dz>.35&&dy<.5;if(dy<-.05&&dz>-.6)continue;if(front&&dy<.3)continue;if(Math.abs(dx)>.75&&dy<.25&&dz>-.5)continue;
+      const fo=dz>.3?.012*dz:0;const lp=[dx*(.094+fo),.02+dy*.1,-.016+dz*(.108+fo)];const c=hp(lp[0],lp[1],lp[2]);const n=nrm(madd([0,0,0],hRt,dx/.094,hUp,dy/.1,hFw,dz/.108));
+      const sweep=nrm(madd([0,0,0],hFw,-1,hUp,-.6,hRt,(rnd()-.5)*1.4));let t=nrm(sub(sweep,mul(n,dot(sweep,n))));t=rot(t,n,(rnd()-.5)*1.2);const b=cross(n,t);const r=.008+rnd()*.007;
+      add_(P_ell(madd(c,n,-.003+rnd()*.003),t,b,n,r*(1.7+rnd()*.8),r,r*.55,.009))}}
+  // forehead
+  add_(P_ell(hp(0,.018,.058),hRt,hUp,hFw,.07,.042,.038,.03));
+  // brow ridge — heavy & knitted (two masses + central furrow bunching)
+  for(const s of [-1,1])add_(P_ell(hp(s*.033,.003,.089),rot(hRt,hFw,s*.2),hUp,hFw,.038,.017,.024,.02));
+  add_(P_ell(hp(0,.012,.096),hRt,hUp,hFw,.012,.02,.012,.012)); // procerus bulge between brows
+  // eye sockets
+  for(const s of [-1,1])cut(P_ell(hp(s*.034,-.014,.088),hRt,hUp,hFw,.024,.016,.02,.016));
+  // eyeballs + lids (downcast, nearly closed)
+  for(const s of [-1,1]){add_(P_sph(hp(s*.034,-.016,.075),.016,.004));add_(P_ell(hp(s*.034,-.01,.085),hRt,hUp,hFw,.019,.008,.011,.006));
+    add_(P_ell(hp(s*.035,-.027,.084),hRt,hUp,hFw,.017,.005,.009,.006))}
+  // cheekbones & cheeks
+  for(const s of [-1,1]){add_(P_ell(hp(s*.058,-.024,.06),hRt,hUp,hFw,.026,.017,.026,.022));add_(P_ell(hp(s*.045,-.06,.063),hRt,hUp,hFw,.026,.028,.024,.03))}
+  // nose: bridge, tip, wings
+  add_(P_cone(hp(0,-.004,.098),hp(0,-.042,.12),.0075,.0095,.01));
+  add_(P_ell(hp(0,-.048,.12),hRt,hUp,hFw,.011,.01,.01,.008));
+  for(const s of [-1,1])add_(P_ell(hp(s*.0125,-.052,.11),hRt,hUp,hFw,.0085,.007,.009,.006)); // flared alae
+  for(const s of [-1,1])cut(P_ell(hp(s*.008,-.061,.118),hRt,nrm(madd([0,0,0],hUp,1,hFw,.6)),hFw,.0045,.003,.007,.003)); // nostrils
+  // nasolabial folds
+  for(const s of [-1,1])add_(P_cone(hp(s*.025,-.048,.1),hp(s*.031,-.078,.09),.0045,.0035,.016));
+  // mouth: compressed lips
+  add_(P_ell(hp(0,-.071,.102),hRt,hUp,hFw,.024,.009,.011,.01));
+  cut(P_ell(hp(0,-.064,.118),hRt,hUp,hFw,.004,.006,.004,.004)); // philtrum
+  add_(P_ell(hp(0,-.085,.1),hRt,hUp,hFw,.022,.009,.012,.012));
+  cut(P_ell(hp(0,-.0785,.114),hRt,hUp,hFw,.021,.0016,.01,.004));
+  for(const s of [-1,1])cut(P_sph(hp(s*.024,-.079,.104),.0035,.005));
+  // jaw & chin
+  for(const s of [-1,1])add_(P_cone(hp(s*.068,-.04,-.012),hp(s*.036,-.1,.062),.021,.019,.03));
+  add_(P_ell(hp(0,-.104,.083),hRt,hUp,hFw,.027,.02,.022,.02));
+  cut(P_ell(hp(0,-.095,.1),hRt,hUp,hFw,.016,.003,.008,.006)); // mentolabial sulcus
+  // ears
+  for(const s of [-1,1]){const ec=hp(s*.09,-.02,-.006);const eu=rot(hUp,hFw,-s*.0);add_(P_ell(ec,rot(hRt,hUp,s*.35),rot(eu,hRt,-.2),rot(hFw,hUp,s*.35),.011,.031,.019,.01));
+    add_(P_ell(hp(s*.093,-.045,-.004),hRt,hUp,hFw,.008,.01,.01,.006)); // lobe
+    cut(P_ell(hp(s*.104,-.02,.0),hRt,hUp,hFw,.004,.009,.006,.006))}
+
+  /* ===== ARMS ===== */
+  function arm(sh,el,wr,s,pron){
+    const ua=nrm(sub(el,sh)),fa=nrm(sub(wr,el));
+    add_(P_cone(sh,el,.068,.05,.045));
+    // biceps (front) and triceps (back): front ~ direction from elbow bend
+    let front=nrm(sub(fa,mul(ua,dot(fa,ua))));if(len(sub(fa,mul(ua,dot(fa,ua))))<.05)front=cFw;
+    const side=nrm(cross(ua,front));
+    add_(P_ell(madd(lerp(sh,el,.55),front,.026),ua,front,side,.11,.047,.044,.03));
+    add_(P_ell(madd(lerp(sh,el,.42),front,-.026),ua,front,side,.12,.048,.05,.03));
+    // elbow: olecranon + epicondyles
+    add_(P_sph(madd(el,front,-.034),.03,.025));
+    // forearm
+    add_(P_cone(el,wr,.053,.034,.035));
+    const ff=nrm(cross(fa,side));
+    add_(P_ell(madd(lerp(el,wr,.28),side,s*.016,ff,.012),fa,side,ff,.1,.042,.04,.03)); // brachioradialis/extensors
+    add_(P_ell(madd(lerp(el,wr,.3),side,-s*.016,ff,-.008),fa,side,ff,.095,.036,.038,.03)); // flexors
+    return {ua,fa,side,front};
+  }
+  const aR=arm(J.shR,J.elR,J.wrR,-1),aL=arm(J.shL,J.elL,J.wrL,1);
+
+  /* hand builder: frame at wrist; z along metacarpals, y dorsal, x toward thumb side? we pass thumbSide sign */
+  function hand(F,curls,thumb,spread,scale){
+    scale=scale||1;
+    // palm
+    add_(P_ell(F.p(0,-.002*scale,.055*scale),F.x,F.y,F.z,.042*scale,.016*scale,.054*scale,.018));
+    for(let f=0;f<4;f++){const x=[.024,.008,-.008,-.023][f]*scale;add_(P_cone(F.p(x*.6,.006*scale,.02*scale),F.p(x,.009*scale,.09*scale),.006*scale,.007*scale,.01))} // extensor tendons / metacarpals
+    add_(P_ell(F.p(.02*scale,-.006*scale,.035*scale),F.x,F.y,F.z,.022*scale,.014*scale,.03*scale,.015)); // thenar
+    // wrist joint smooth
+    add_(P_ell(F.p(0,0,.004),F.x,F.y,F.z,.034*scale,.02*scale,.022*scale,.02));
+    // fingers: index..pinky at x offsets (thumb side +x)
+    const xs=[.026,.009,-.009,-.026],ls=[[.052,.032,.026],[.058,.037,.027],[.054,.035,.026],[.044,.028,.023]],rs=[.0115,.012,.0112,.0098];
+    for(let f=0;f<4;f++){const c=curls[f];let p=F.p(xs[f]*scale,.002,(.098-(f===3?.008:0)-(f===0?.003:0))*scale);let dir=rot(F.z,F.y,(spread[f]||0));
+      // knuckle bump
+      add_(P_sph(madd(p,F.y,.006*scale),.012*scale,.012));
+      for(let k=0;k<3;k++){const ax=nrm(cross(F.y,dir));dir=rot(dir,ax,c[k]);const q=madd(p,dir,ls[f][k]*scale);const r0=rs[f]*scale*(1-k*.1),r1=rs[f]*scale*(1-(k+1)*.1)*(k===2?.9:1);
+        add_(P_cone(p,q,r0,r1,.006));
+        if(k<2)add_(P_sph(q,r1*1.08,.004));
+        p=q}}
+    // thumb
+    {let p=F.p(.03*scale,-.008*scale,.02*scale);let dir=thumb.d;const ls2=[.045,.034,.028];
+      for(let k=0;k<3;k++){dir=rot(dir,thumb.ax,thumb.c[k]);const q=madd(p,dir,ls2[k]*scale);add_(P_cone(p,q,(k?.0125:.017)*scale,(.0125-k*.0012)*scale,k?.006:.018));p=q}}
+  }
+  // RIGHT hand: back of the hand faces forward, fingers curled back toward the throat; the chin rests on them
+  hand(RH,[[1.45,1.35,.75],[1.5,1.4,.8],[1.5,1.4,.8],[1.45,1.35,.75]],{d:nrm(madd([0,0,0],RH.z,.75,RH.x,.45,RH.y,-.4)),ax:nrm(cross(RH.y,RH.z)),c:[.1,.35,.3]},[.05,0,-.04,-.1],HS);
+  // LEFT hand: limp, hanging over the knee, palm toward the leg
+  {const hz=nrm(V(-.08,-1,.22));const hy=nrm(V(.2,.05,1)); // back of hand faces forward-out
+    const F=frameXYZ(J.wrL,cross(hy,hz),hy);const thumbSign=dot(F.x,V(-1,0,0))>0?1:-1;const Fx=mul(F.x,thumbSign);
+    const F2={o:F.o,x:Fx,y:F.y,z:F.z,p(a,b,c){return madd(F.o,Fx,a,F.y,b,F.z,c)}};
+    hand(F2,[[.3,.4,.3],[.35,.45,.3],[.4,.5,.32],[.45,.55,.35]],{d:nrm(madd([0,0,0],F.z,.8,Fx,.3,F.y,-.3)),ax:nrm(cross(F.y,F.z)),c:[.15,.25,.2]},[.08,.02,-.03,-.09],HS);
+  }
+
+  /* ===== LEGS ===== */
+  function leg(hip,knee,ank,s){
+    const th=nrm(sub(knee,hip)),sh=nrm(sub(ank,knee));
+    add_(P_cone(hip,knee,.118,.066,.06));
+    const up=nrm(sub(UP,mul(th,dot(UP,th))));const lat=nrm(cross(th,up)); // lat points to one side
+    const out=mul(lat,dot(lat,V(s,0,0))>0?1:-1);
+    // quadriceps: rectus femoris (top), vastus lateralis (outer), vastus medialis (inner teardrop above knee)
+    add_(P_ell(madd(lerp(hip,knee,.45),up,.048),th,up,out,.2,.055,.06,.04));
+    add_(P_ell(madd(lerp(hip,knee,.5),out,.05,up,.012),th,up,out,.21,.06,.055,.04));
+    add_(P_ell(madd(lerp(hip,knee,.8),out,-.046,up,.022),th,up,out,.085,.048,.046,.03));
+    // hamstrings pressed on the seat (flattened)
+    add_(P_ell(madd(lerp(hip,knee,.4),up,-.045),th,up,out,.21,.048,.07,.05));
+    // adductors (inner thigh)
+    add_(P_ell(madd(lerp(hip,knee,.25),out,-.06,up,-.01),th,up,out,.16,.06,.055,.05));
+    // knee: patella + condyles
+    add_(P_ell(madd(knee,th,.045,up,.028),th,up,out,.034,.022,.032,.02));
+    add_(P_ell(madd(knee,th,.0),th,up,out,.05,.058,.07,.03));
+    // shin bone + calf
+    add_(P_cone(knee,ank,.064,.04,.04));
+    const fw=nrm(sub(V(0,0,1),mul(sh,dot(V(0,0,1),sh))));const sd=nrm(cross(sh,fw));
+    add_(P_ell(madd(lerp(knee,ank,.3),fw,-.046),sh,fw,sd,.15,.068,.07,.04)); // gastrocnemius
+    add_(P_ell(madd(lerp(knee,ank,.25),fw,-.035,sd,s*.03),sh,fw,sd,.1,.042,.036,.03));
+    add_(P_ell(madd(lerp(knee,ank,.35),fw,.026,sd,s*.014),sh,fw,sd,.13,.024,.024,.025)); // tibialis
+    // Achilles & ankle bones
+    add_(P_cone(madd(lerp(knee,ank,.6),fw,-.036),madd(ank,fw,-.036,sh,.02),.024,.015,.02));
+    add_(P_sph(madd(ank,sd,.032),.02,.015));add_(P_sph(madd(ank,sd,-.032,sh,-.01),.02,.015));
+    return {fw,sd};
+  }
+  const lR=leg(J.hipR,J.kneeR,J.ankR,-1),lL=leg(J.hipL,J.kneeL,J.ankL,1);
+
+  /* feet: heroic size, toes gripping (curled) */
+  function foot(ank,heel,ball,s,grip){
+    const fz=nrm(sub(ball,heel));const fy=nrm(sub(UP,mul(fz,dot(UP,fz))));const fx=nrm(cross(fy,fz)); // fx: figure's left
+    add_(P_sph(heel,.046,.03));
+    add_(P_cone(madd(ank,fy,-.01),heel,.042,.044,.04));
+    add_(P_ell(lerp(heel,ball,.5),fx,fy,fz,.054,.033,.13,.04)); // foot body
+    add_(P_ell(madd(lerp(heel,ball,.62),fy,.012,fx,-s*.012),fx,fy,fz,.035,.02,.08,.03)); // instep
+    add_(P_ell(madd(lerp(heel,ball,.66),fx,s*.02,fy,-.008),fx,fy,fz,.06,.024,.08,.03));
+    // toes: big toe on the inner side (toward midline: -s * fx ... midline is -x for left foot)
+    const inner=-s;const tx=[.04,.015,-.007,-.026,-.043],tl=[[.035,.03],[.026,.018,.014],[.022,.015,.012],[.019,.013,.011],[.016,.012,.01]],tr=[.019,.0125,.0115,.0105,.0095];
+    for(let t=0;t<5;t++){let p=madd(ball,fx,inner*tx[t],fz,(t===0?.01:-.004*t),fy,-.004);let dir=rot(fz,fy,inner*(t-1.5)*-.04);const n=tl[t].length;
+      add_(P_sph(p,tr[t]*1.15,.01));
+      for(let k=0;k<n;k++){const ax=nrm(cross(fy,dir));dir=rot(dir,ax,grip[k]*(t===0?.8:1));const q=madd(p,dir,tl[t][k]);add_(P_cone(p,q,tr[t]*(1-k*.08),tr[t]*(1-(k+1)*.08),.005));p=q}}
+  }
+  foot(J.ankR,V(-.238,.04,.24),V(-.252,.028,.465),-1,[-.15,.55,.45]);
+  foot(J.ankL,V(.192,.07,.385),V(.213,.06,.605),1,[.35,.9,.6]);
+
+  /* anatomical landmarks for the game (figure-local coords) */
+  const L={
+    brow:hp(0,.012,.1),nose:hp(0,-.05,.121),lips:hp(0,-.08,.11),
+    fistR:add(J.wrR,V(0,.06,-.05)),handL:add(J.wrL,V(0,-.1,.04)),
+    armR:lerp(J.elR,J.wrR,.45),armRu:lerp(J.shR,J.elR,.5),armL:lerp(J.shL,J.elL,.5),forearmL:lerp(J.elL,J.wrL,.5),
+    back:T.p(0,.04,-.15),backLow:Ab.p(0,0,-.13),
+    thighR:lerp(J.hipR,J.kneeR,.6),thighL:lerp(J.hipL,J.kneeL,.55),calfR:lerp(J.kneeR,J.ankR,.35),calfL:lerp(J.kneeL,J.ankL,.35),
+    toesR:V(-.256,.036,.505),toesL:V(.222,.045,.645),
+    head:hp(0,.06,-.02),ear:hp(-.095,-.02,-.008),chest:T.p(-.05,.08,.14),belly:Ab.p(0,0,.12),shoulderR:J.shR,shoulderL:J.shL,
+    kneeR:J.kneeR,kneeL:J.kneeL,neck:lerp(J.C7,neckTop,.5),glute:V(0,.6,-.22),
+    headC:hc,faceFw:hFw,faceUp:hUp
+  };
+  // Modelling displacement: Rodin's lumpy, thumbed clay surface (very low amplitude)
+  const disp=(x,y,z,d)=>{if(d>.02||d<-.02)return 0;return .0016*fbm(x*28,y*28,z*28,2)+.0006*vnoise(x*90,y*90,z*90)};
+  return {add:A,cut:C,disp,J,L,bbox:[V(-.42,-.03,-.32),V(.45,1.36,.72)]};
+}
+
+/* ---------- the rock the Thinker sits on (rough, chiselled) ---------- */
+function rock(){
+  const A=[],C=[];
+  const X=V(1,0,0),Y=V(0,1,0),Z=V(0,0,1);const R=(v,a)=>rot(v,Y,a);const Rx=(v,a)=>rot(v,X,a);
+  A.push(P_box(V(0,-.045,.12),X,Y,Z,.40,.025,.5,.02,.0));                       // cast base plate (top at y=0)
+  A.push(P_box(V(.2,.0,.43),R(X,-.3),Y,R(Z,-.3),.1,.015,.13,.012,.04));         // ledge under the left foot
+  A.push(P_box(V(-.01,.22,-.12),R(X,.07),Y,R(Z,.07),.17,.17,.2,.1,.1));         // seat block
+  A.push(P_box(V(-.02,.4,-.15),R(X,.18),Rx(Y,-.08),R(Z,.18),.17,.03,.17,.07,.1)); // flattened seat top
+  A.push(P_ell(V(-.2,.15,-.22),R(X,.5),Rx(Y,.2),R(Z,.5),.16,.17,.16,.09));
+  A.push(P_ell(V(.21,.13,-.23),R(X,-.4),Rx(Y,-.15),R(Z,-.4),.16,.15,.16,.09));
+  A.push(P_ell(V(.06,.09,.1),R(X,.3),Y,R(Z,.3),.2,.1,.14,.1));
+  A.push(P_ell(V(-.14,.26,.02),X,Y,Z,.1,.15,.09,.09));
+  A.push(P_ell(V(.08,.06,-.36),X,Y,Z,.22,.08,.1,.09));
+  const disp=(x,y,z,d)=>{if(d>.08)return 0;const top=Math.max(0,Math.min(1,(y-.035)/.05));const r=1-Math.abs(vnoise(x*7+3,y*7,z*7));
+    return top*(.034*fbm(x*3.5,y*3.5,z*3.5,3)+.012*r*r+.006*fbm(x*20,y*20,z*20,2))+.003*vnoise(x*60,y*60,z*60)};
+  return {add:A,cut:C,disp,bbox:[V(-.48,-.1,-.5),V(.48,.6,.7)]};
+}
+
+/* ---------- one of the Three Shades (simplified standing figure, head bowed, left arm hanging) ---------- */
+function shade(){
+  const A=[],C=[];const UP=V(0,1,0),X=V(1,0,0),Z=V(0,0,1);const ad=p=>A.push(p);
+  const J={pel:V(0,.98,0),hipR:V(-.1,.95,0),hipL:V(.1,.95,.01),kneeR:V(-.11,.5,.03),kneeL:V(.1,.52,.08),ankR:V(-.11,.08,-.01),ankL:V(.11,.08,.02),
+    chest:V(0,1.3,.07),C7:V(0,1.47,.1),shR:V(-.21,1.4,.1),shL:V(.21,1.38,.13),head:V(.01,1.36,.3),
+    elR:V(-.26,1.1,.05),wrR:V(-.21,.86,.12),elL:V(.22,1.12,.27),wrL:V(.12,.9,.42)};
+  const cUp=nrm(V(0,1,.55)),cFw=nrm(V(0,-.55,1));
+  ad(P_ell(J.pel,X,UP,Z,.17,.13,.13,.06));
+  ad(P_ell(J.chest,X,cUp,cFw,.2,.19,.14,.08));
+  ad(P_ell(V(0,1.14,.04),X,nrm(V(0,1,.25)),nrm(V(0,-.25,1)),.15,.14,.12,.08));
+  for(const s2 of [-1,1]){ad(P_ell(add(J.chest,V(s2*.085,.02,.11)),X,cUp,cFw,.09,.08,.04,.04));ad(P_ell(add(J.chest,V(s2*.1,.06,-.1)),X,cUp,cFw,.09,.1,.04,.05))}
+  // neck bent so far forward it is almost horizontal
+  ad(P_cone(J.C7,add(J.head,V(0,.03,-.08)),.07,.058,.05));
+  ad(P_ell(J.head,X,nrm(V(0,.15,1)),nrm(V(0,-1,.15)),.085,.105,.1,.03));
+  for(const s2 of [-1,1]){const sh=s2<0?J.shR:J.shL,el=s2<0?J.elR:J.elL,wr=s2<0?J.wrR:J.wrL;
+    ad(P_ell(sh,X,UP,Z,.075,.07,.075,.04));ad(P_cone(sh,el,.065,.048,.04));ad(P_cone(el,wr,.05,.034,.03));
+    const d=nrm(sub(wr,el));ad(P_ell(madd(wr,d,.07),X,d,cross(X,d),.04,.07,.022,.02));
+    const hp=s2<0?J.hipR:J.hipL,kn=s2<0?J.kneeR:J.kneeL,an=s2<0?J.ankR:J.ankL;
+    ad(P_cone(hp,kn,.11,.065,.06));ad(P_ell(lerp(hp,kn,.45),nrm(sub(kn,hp)),X,Z,.2,.06,.07,.05));ad(P_cone(kn,an,.062,.04,.04));
+    ad(P_ell(add(lerp(kn,an,.3),V(0,0,-.045)),UP,X,Z,.14,.06,.06,.04));ad(P_ell(add(an,V(0,-.05,.08)),X,UP,Z,.05,.032,.13,.03));
+    ad(P_ell(add(J.pel,V(s2*.085,-.04,-.1)),X,UP,Z,.1,.1,.08,.05))}
+  const disp=(x,y,z,d)=>d<.02?.003*fbm(x*20,y*20,z*20,2):0;
+  return {add:A,cut:C,disp,bbox:[V(-.38,-.02,-.24),V(.38,1.62,.6)]};
+}
+
+/* ---------- sparse surface nets (block-parallel) ---------- */
+function grid(M,h){const B=8,lo=M.bbox[0],hi=M.bbox[1];const NX=Math.ceil((hi[0]-lo[0])/h),NY=Math.ceil((hi[1]-lo[1])/h),NZ=Math.ceil((hi[2]-lo[2])/h);
+  return {B,lo,NX,NY,NZ,BX:Math.ceil(NX/B),BY:Math.ceil(NY/B),BZ:Math.ceil(NZ/B)}}
+/* computes vertices for the blocks with (bz % parts) === part */
+function meshPart(M,h,part,parts,progress){
+  const G=grid(M,h),{B,lo,NX,NY,BX,BY,BZ}=G;
+  const hd=B*h*Math.sqrt(3)/2;const all=M.add,cuts=M.cut;
+  const D0=new Float32Array(BX*BY*BZ);const act=[];
+  for(let bz=0;bz<BZ;bz++)for(let by=0;by<BY;by++)for(let bx=0;bx<BX;bx++){
+    const cx=lo[0]+(bx+.5)*B*h,cy=lo[1]+(by+.5)*B*h,cz=lo[2]+(bz+.5)*B*h;
+    const d=evalList(M,all,cuts,cx,cy,cz);D0[bx+BX*(by+BY*bz)]=d;if(bz%parts===part&&Math.abs(d)<hd*1.6+.004)act.push([bx,by,bz,cx,cy,cz])}
+  const S=B+1;
+  const cullFor=(cx,cy,cz,margin)=>{const ds=new Float64Array(all.length);let dm=1e9;for(let i=0;i<all.length;i++){const d=evalP(all[i],cx,cy,cz);ds[i]=d;if(d<dm)dm=d}
+    const base=dm+2*(hd+margin)+.002;const a=[];for(let i=0;i<all.length;i++)if(ds[i]<base+all[i].k)a.push(all[i]);
+    const c=[];for(const P of cuts){if(evalP(P,cx,cy,cz)<2*(hd+margin)+P.k+.004+Math.max(0,-dm))c.push(P)}return [a,c]};
+  const D0at=(x,y,z)=>{let fx=(x-lo[0])/(B*h)-.5,fy=(y-lo[1])/(B*h)-.5,fz=(z-lo[2])/(B*h)-.5;fx=Math.max(0,Math.min(BX-1.001,fx));fy=Math.max(0,Math.min(BY-1.001,fy));fz=Math.max(0,Math.min(BZ-1.001,fz));
+    const ix=fx|0,iy=fy|0,iz=fz|0,tx=fx-ix,ty=fy-iy,tz=fz-iz;const g=(a,b,c)=>D0[Math.min(BX-1,a)+BX*(Math.min(BY-1,b)+BY*Math.min(BZ-1,c))];
+    const c00=g(ix,iy,iz)*(1-tx)+g(ix+1,iy,iz)*tx,c10=g(ix,iy+1,iz)*(1-tx)+g(ix+1,iy+1,iz)*tx,c01=g(ix,iy,iz+1)*(1-tx)+g(ix+1,iy,iz+1)*tx,c11=g(ix,iy+1,iz+1)*(1-tx)+g(ix+1,iy+1,iz+1)*tx;
+    return (c00*(1-ty)+c10*ty)*(1-tz)+(c01*(1-ty)+c11*ty)*tz};
+  const E=[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
+  const co=[[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
+  const v8=new Float32Array(8),vals=new Float32Array(S*S*S);
+  const pos=[],nor=[],ao=[],cells=[];let ai=0;
+  for(const b of act){const [bx,by,bz,cx,cy,cz]=b;const [la,lc]=cullFor(cx,cy,cz,0);const [wa,wc]=cullFor(cx,cy,cz,.028);
+    const x0=lo[0]+bx*B*h,y0=lo[1]+by*B*h,z0=lo[2]+bz*B*h;
+    for(let k=0;k<S;k++)for(let j=0;j<S;j++)for(let i=0;i<S;i++)vals[i+S*(j+S*k)]=evalList(M,la,lc,x0+i*h,y0+j*h,z0+k*h);
+    const g=(x,y,z)=>evalList(M,la,lc,x,y,z),gw=(x,y,z)=>evalList(M,wa,wc,x,y,z);
+    for(let k=0;k<B;k++)for(let j=0;j<B;j++)for(let i=0;i<B;i++){
+      let m=0;for(let c=0;c<8;c++){const v=vals[(i+co[c][0])+S*((j+co[c][1])+S*(k+co[c][2]))];v8[c]=v;if(v<0)m|=1<<c}
+      if(m===0||m===255)continue;
+      let sx=0,sy=0,sz=0,n=0;
+      for(const [a,b2] of E){const va=v8[a],vb=v8[b2];if((va<0)===(vb<0))continue;const t=va/(va-vb);
+        sx+=co[a][0]+(co[b2][0]-co[a][0])*t;sy+=co[a][1]+(co[b2][1]-co[a][1])*t;sz+=co[a][2]+(co[b2][2]-co[a][2])*t;n++}
+      let px=x0+(i+sx/n)*h,py=y0+(j+sy/n)*h,pz=z0+(k+sz/n)*h;
+      const e=h*.35;let gx,gy,gz,d;
+      const tet=()=>{const a1=g(px+e,py-e,pz-e),a2=g(px-e,py-e,pz+e),a3=g(px-e,py+e,pz-e),a4=g(px+e,py+e,pz+e);d=(a1+a2+a3+a4)*.25;
+        gx=a1-a2-a3+a4;gy=-a1-a2+a3+a4;gz=-a1+a2-a3+a4;const gl=Math.hypot(gx,gy,gz)||1;gx/=gl;gy/=gl;gz/=gl};
+      tet();const st=Math.max(-h*.6,Math.min(h*.6,d));px-=gx*st;py-=gy*st;pz-=gz*st;tet();
+      let occ=0,w=1;for(const s2 of [.007,.016,.027]){occ+=w*Math.max(0,s2-gw(px+gx*s2,py+gy*s2,pz+gz*s2))/s2;w*=.75}
+      let occF=0;w=1;for(const s2 of [.06,.11,.18]){occF+=w*Math.max(0,s2-D0at(px+gx*s2,py+gy*s2,pz+gz*s2))/s2;w*=.7}
+      ao.push(Math.max(0,Math.min(1,1-occ*.32-occF*.28)));
+      pos.push(px,py,pz);nor.push(gx,gy,gz);cells.push(bx*B+i,by*B+j,bz*B+k,m)}
+    if(progress&&(++ai%60===0))progress(ai/act.length)}
+  if(progress)progress(1);
+  return {pos:new Float32Array(pos),nor:new Float32Array(nor),ao:new Float32Array(ao),cells:new Int32Array(cells),NX,NY};
+}
+/* joins parts: faces from the global cell map + mean curvature */
+function assemble(parts){
+  let nv=0;for(const p of parts)nv+=p.ao.length;const NX=parts[0].NX,NY=parts[0].NY;
+  const pos=new Float32Array(nv*3),nor=new Float32Array(nv*3),ao=new Float32Array(nv),cells=new Int32Array(nv*4);let o=0;
+  for(const p of parts){const n=p.ao.length;pos.set(p.pos,o*3);nor.set(p.nor,o*3);ao.set(p.ao,o);cells.set(p.cells,o*4);o+=n}
+  const vmap=new Map();for(let v=0;v<nv;v++)vmap.set(cells[v*4]+NX*(cells[v*4+1]+NY*cells[v*4+2]),v);
+  const idx=[];const axes=[[1,0,0],[0,1,0],[0,0,1]];
+  for(let v=0;v<nv;v++){const i=cells[v*4],j=cells[v*4+1],k=cells[v*4+2],m=cells[v*4+3];const c0=(m&1)!==0;
+    for(let a=0;a<3;a++){const bit=a===0?2:a===1?4:16;const c1=(m&bit)!==0;if(c0===c1)continue;
+      const u=axes[(a+1)%3],w=axes[(a+2)%3];const kk=(di,dj,dk)=>vmap.get((i+di)+NX*((j+dj)+NY*(k+dk)));
+      const v1=kk(-u[0],-u[1],-u[2]),v2=kk(-u[0]-w[0],-u[1]-w[1],-u[2]-w[2]),v3=kk(-w[0],-w[1],-w[2]);
+      if(v1===undefined||v2===undefined||v3===undefined)continue;
+      if(c0)idx.push(v,v1,v2,v,v2,v3);else idx.push(v,v2,v1,v,v3,v2)}}
+  // drop tiny disconnected islands (noise specks)
+  const par=new Int32Array(nv);for(let v=0;v<nv;v++)par[v]=v;const fnd=x=>{while(par[x]!==x){par[x]=par[par[x]];x=par[x]}return x};
+  for(let t=0;t<idx.length;t+=3){const a=fnd(idx[t]),b=fnd(idx[t+1]),c=fnd(idx[t+2]);par[b]=a;par[fnd(c)]=a}
+  const cnt=new Map();for(let v=0;v<nv;v++){const r=fnd(v);cnt.set(r,(cnt.get(r)||0)+1)}
+  const keep=[];for(let t=0;t<idx.length;t+=3)if(cnt.get(fnd(idx[t]))>=60)keep.push(idx[t],idx[t+1],idx[t+2]);
+  const I=new Uint32Array(keep);
+  const cs=new Float32Array(nv),cn=new Float32Array(nv);
+  for(let t=0;t<I.length;t+=3)for(let e2=0;e2<3;e2++){const a=I[t+e2],b=I[t+(e2+1)%3];
+    const dx=pos[a*3]-pos[b*3],dy=pos[a*3+1]-pos[b*3+1],dz=pos[a*3+2]-pos[b*3+2];const l2=dx*dx+dy*dy+dz*dz||1e-9;
+    const c=((nor[a*3]-nor[b*3])*dx+(nor[a*3+1]-nor[b*3+1])*dy+(nor[a*3+2]-nor[b*3+2])*dz)/l2;cs[a]+=c;cs[b]+=c;cn[a]++;cn[b]++}
+  let cur=new Float32Array(nv);for(let v=0;v<nv;v++)cur[v]=cn[v]?cs[v]/cn[v]:0;
+  for(let it=0;it<2;it++){const acc=new Float32Array(nv),c2=new Float32Array(nv);for(let t=0;t<I.length;t+=3)for(let e2=0;e2<3;e2++){const a=I[t+e2],b=I[t+(e2+1)%3];acc[a]+=cur[b];acc[b]+=cur[a];c2[a]++;c2[b]++}
+    for(let v=0;v<nv;v++)if(c2[v])cur[v]=cur[v]*.4+.6*acc[v]/c2[v]}
+  return {pos,nor,ao,cur,idx:I};
+}
+function mesh(M,h,progress){const t0=Date.now();const r=assemble([meshPart(M,h,0,1,progress)]);r.ms=Date.now()-t0;return r}
+const MODELS={thinker,rock,shade};
+function build(name,h,progress){const M=MODELS[name]();const r=mesh(M,h,progress);if(M.L)r.L=M.L;if(M.J)r.J=M.J;return r}
+function landmarks(name){const M=MODELS[name]();return {L:M.L,J:M.J}}
+if(typeof self!=='undefined'&&typeof self.postMessage==='function'&&typeof window==='undefined'){
+  self.onmessage=e=>{const {name,h,id,part,parts}=e.data;let last=0;const M=MODELS[name]();
+    const r=meshPart(M,h,part,parts,p=>{const n=Date.now();if(n-last>120){last=n;self.postMessage({id,progress:p})}});
+    self.postMessage({id,done:true,r},[r.pos.buffer,r.nor.buffer,r.ao.buffer,r.cells.buffer])}}
+return {build,assemble,landmarks,meshPart,MODELS};
+}
+</script>
+<script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
+<script type="module">
+import * as THREE from 'three';
+const $=id=>document.getElementById(id);
+const TAU=Math.PI*2;
+const reduce=matchMedia('(prefers-reduced-motion: reduce)').matches;
+const touch=matchMedia('(pointer: coarse)').matches;
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+const lerp=(a,b,t)=>a+(b-a)*t;
+const esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const DEBUG=/[?&]debug\b/.test(location.search);
+const smooth=(a,b,x)=>{const t=clamp((x-a)/(b-a),0,1);return t*t*(3-2*t)};
+function srand(seed){let s=(seed*2654435761)>>>0||1;return()=>{s^=s<<13;s>>>=0;s^=s>>>17;s^=s<<5;s>>>=0;return s/4294967296}}
+const V3=(x,y,z)=>new THREE.Vector3(x,y,z);
+
+/* ---------------- state ---------------- */
+const KEY='rodin-escape-v1';
+const ANSWER=[8,3,1880];
+const PARTS=[['brow','이마'],['nose','콧구멍'],['lips','입술'],['arm','팔'],['back','등'],['leg','다리'],['fist','주먹'],['toes','발가락']];
+function freshState(){return {team:'',started:false,elapsed:0,hints:0,hintIdx:[0,0,0,0],found:[],gates:{seen:false,poet:false,shades:false},plaque:false,lightAz:20,lockVals:[0,0,0],escaped:false,doneA:false,doneB:false}}
+let S=freshState();
+function save(){try{localStorage.setItem(KEY,JSON.stringify(S))}catch(e){}}
+function loadSaved(){try{const s=JSON.parse(localStorage.getItem(KEY)||'null');if(s&&s.started&&!s.escaped)return s}catch(e){}return null}
+
+/* ---------------- renderer ---------------- */
+let renderer;
+try{renderer=new THREE.WebGLRenderer({canvas:$('gl'),antialias:true,powerPreference:'high-performance'})}
+catch(e){document.body.innerHTML='<p style="padding:40px;font-size:18px">이 기기에서는 3D 화면(WebGL)을 열 수 없어요. 다른 브라우저나 기기로 열어 주세요.</p>';throw e}
+renderer.setPixelRatio(Math.min(window.devicePixelRatio||1,touch?1.5:2));
+renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;renderer.shadowMap.autoUpdate=false;
+const reshadow=()=>{renderer.shadowMap.needsUpdate=true};
+renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.05;
+const scene=new THREE.Scene();scene.background=new THREE.Color('#0b0b0d');scene.fog=new THREE.FogExp2('#0b0b0d',.022);
+const camera=new THREE.PerspectiveCamera(50,1,.03,80);
+let startOffset=true;
+function resize(){renderer.setSize(innerWidth,innerHeight,false);camera.aspect=innerWidth/innerHeight;camera.fov=innerWidth<innerHeight?62:50;
+  // on the title screen the statue sits to the right of the text
+  if(startOffset&&innerWidth>innerHeight*1.1)camera.setViewOffset(innerWidth,innerHeight,-innerWidth*.2,0,innerWidth,innerHeight);else camera.clearViewOffset();camera.updateProjectionMatrix()}
+addEventListener('resize',resize);resize();
+
+/* environment for reflections: dark gallery with ceiling light strips */
+{const es=new THREE.Scene();const box=new THREE.Mesh(new THREE.BoxGeometry(20,9,20),new THREE.MeshBasicMaterial({color:'#17140f',side:THREE.BackSide}));box.position.y=4;es.add(box);
+  const em=(w,h,c,x,y,z,ry,rx)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),new THREE.MeshBasicMaterial({color:c,side:THREE.DoubleSide}));m.position.set(x,y,z);m.rotation.set(rx||0,ry||0,0);es.add(m)};
+  em(14,1.2,'#d8c8ac',0,8.4,-2,0,Math.PI/2);em(14,1.2,'#d8c8ac',0,8.4,3,0,Math.PI/2);em(3,6,'#3a3022',-9.8,3,0,Math.PI/2);em(5,4,'#4a3a26',0,3,-9.8,0);em(1.6,3,'#6a8a70',0,1.8,9.8,0);
+  const pm=new THREE.PMREMGenerator(renderer);scene.environment=pm.fromScene(es,.03).texture;pm.dispose()}
+
+/* ---------------- canvas helpers ---------------- */
+function canvas(w,h){const c=document.createElement('canvas');c.width=w;c.height=h;return c}
+function tex(cv,srgb){const t=new THREE.CanvasTexture(cv);t.anisotropy=8;if(srgb)t.colorSpace=THREE.SRGBColorSpace;return t}
+const glowTex=tex((()=>{const c=canvas(128,128),x=c.getContext('2d');const g=x.createRadialGradient(64,64,0,64,64,64);g.addColorStop(0,'rgba(255,255,255,1)');g.addColorStop(.3,'rgba(255,255,255,.45)');g.addColorStop(1,'rgba(255,255,255,0)');x.fillStyle=g;x.fillRect(0,0,128,128);return c})());
+function glowSprite(color,scale,op){const s=new THREE.Sprite(new THREE.SpriteMaterial({map:glowTex,color,transparent:true,opacity:op==null?.6:op,depthWrite:false,blending:THREE.AdditiveBlending}));s.scale.setScalar(scale);return s}
+/* height field -> normal map canvas */
+function normalFromHeight(H,w,h,str){const c=canvas(w,h),x=c.getContext('2d'),im=x.createImageData(w,h),d=im.data;
+  for(let j=0;j<h;j++)for(let i=0;i<w;i++){const l=H[j*w+Math.max(0,i-1)],r=H[j*w+Math.min(w-1,i+1)],u=H[Math.max(0,j-1)*w+i],b=H[Math.min(h-1,j+1)*w+i];
+    let nx=(l-r)*str,ny=(b-u)*str,nz=1;const L=Math.hypot(nx,ny,nz);const k=(j*w+i)*4;d[k]=(nx/L*.5+.5)*255;d[k+1]=(ny/L*.5+.5)*255;d[k+2]=(nz/L*.5+.5)*255;d[k+3]=255}
+  x.putImageData(im,0,0);return c}
+function heightOf(cv){const w=cv.width,h=cv.height,d=cv.getContext('2d').getImageData(0,0,w,h).data,H=new Float32Array(w*h);for(let i=0;i<w*h;i++)H[i]=d[i*4]/255;return H}
+/* blur a height array (box blur, separable) */
+function blurH(H,w,h,r){const T=new Float32Array(w*h);for(let j=0;j<h;j++){let s=0;for(let i=-r;i<=r;i++)s+=H[j*w+clamp(i,0,w-1)];for(let i=0;i<w;i++){T[j*w+i]=s/(2*r+1);s+=H[j*w+clamp(i+r+1,0,w-1)]-H[j*w+clamp(i-r,0,w-1)]}}
+  for(let i=0;i<w;i++){let s=0;for(let j=-r;j<=r;j++)s+=T[clamp(j,0,h-1)*w+i];for(let j=0;j<h;j++){H[j*w+i]=s/(2*r+1);s+=T[clamp(j+r+1,0,h-1)*w+i]-T[clamp(j-r,0,h-1)*w+i]}}return H}
+
+/* ---------------- relief generator: writhing figures (for the Gates of Hell) ---------------- */
+function reliefMaps(w,h,seed,count,scale){
+  const cv=canvas(w,h),x=cv.getContext('2d');const R=srand(seed);
+  x.fillStyle='#2a2a2a';x.fillRect(0,0,w,h);
+  // churning ground: flames / rocks / clouds of the Inferno
+  for(let i=0;i<count*4;i++){const cx=R()*w,cy=R()*h,r=(10+R()*30)*scale;const g=x.createRadialGradient(cx,cy,0,cx,cy,r);const v=60+R()*60;g.addColorStop(0,`rgba(${v},${v},${v},.7)`);g.addColorStop(1,`rgba(${v},${v},${v},0)`);x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,TAU);x.fill()}
+  x.globalCompositeOperation='lighten';
+  const limb=(pts,wd)=>{for(const [k,c] of [[1,120],[.72,175],[.42,225]]){x.strokeStyle=`rgb(${c},${c},${c})`;x.lineWidth=wd*k;x.lineCap='round';x.lineJoin='round';x.beginPath();x.moveTo(pts[0][0],pts[0][1]);for(let i=1;i<pts.length;i++)x.lineTo(pts[i][0],pts[i][1]);x.stroke()}};
+  const blob=(cx,cy,r)=>{const g=x.createRadialGradient(cx-r*.2,cy-r*.2,0,cx,cy,r);g.addColorStop(0,'rgb(240,240,240)');g.addColorStop(.7,'rgb(170,170,170)');g.addColorStop(1,'rgba(110,110,110,0)');x.fillStyle=g;x.beginPath();x.arc(cx,cy,r,0,TAU);x.fill()};
+  for(let i=0;i<count;i++){const s=(22+R()*26)*scale,cx=R()*w,cy=R()*h,a=R()*TAU;x.save();x.translate(cx,cy);x.rotate(a);const bend=(R()-.5)*s*.5;
+    limb([[0,-s*.5],[bend,0],[0,s*.42]],s*.5);blob(bend*.3,-s*.85,s*.2);
+    for(const sd of [-1,1]){const sh=[sd*s*.22,-s*.4];const el=[sh[0]+sd*s*(.1+R()*.35),sh[1]+s*(R()-.3)*.7];const hd=[el[0]+sd*s*(R()-.2)*.5,el[1]+s*(R()-.6)*.6];limb([sh,el,hd],s*.17);
+      const hp=[sd*s*.14,s*.38];const kn=[hp[0]+sd*s*(R()*.35),hp[1]+s*(.25+R()*.3)];const ft=[kn[0]+sd*s*(R()-.5)*.5,kn[1]+s*(.2+R()*.35)];limb([hp,kn,ft],s*.2)}
+    x.restore()}
+  x.globalCompositeOperation='source-over';
+  const H=blurH(heightOf(cv),w,h,1);
+  const col=canvas(w,h),cx2=col.getContext('2d'),im=cx2.createImageData(w,h),d=im.data;const n=srand(seed+9);
+  for(let i=0;i<w*h;i++){const v=H[i];const k=i*4;const j=(n()-.5)*.06;
+    // recesses: dark brown-black with a green tinge; ridges: warm polished bronze
+    d[k]=clamp((22+v*78+j*180),0,255);d[k+1]=clamp((17+v*52+j*140),0,255);d[k+2]=clamp((12+v*30),0,255);d[k+3]=255}
+  cx2.putImageData(im,0,0);
+  const hc=canvas(w,h),hx=hc.getContext('2d'),him=hx.createImageData(w,h);for(let i=0;i<w*h;i++){const v=H[i]*255;him.data[i*4]=him.data[i*4+1]=him.data[i*4+2]=v;him.data[i*4+3]=255}hx.putImageData(him,0,0);
+  return {color:tex(col,true),normal:tex(normalFromHeight(H,w,h,4)),height:tex(hc)}}
+
+/* ---------------- bronze material ---------------- */
+const NOISE_GLSL=`
+float h3(vec3 p){p=fract(p*.1031);p+=dot(p,p.zyx+31.32);return fract((p.x+p.y)*p.z);}
+float vn3(vec3 x){vec3 i=floor(x),f=fract(x);f=f*f*(3.-2.*f);
+ return mix(mix(mix(h3(i),h3(i+vec3(1,0,0)),f.x),mix(h3(i+vec3(0,1,0)),h3(i+vec3(1,1,0)),f.x),f.y),mix(mix(h3(i+vec3(0,0,1)),h3(i+vec3(1,0,1)),f.x),mix(h3(i+vec3(0,1,1)),h3(i+vec3(1,1,1)),f.x),f.y),f.z);}`;
+function bronzeMaterial(o){o=o||{};
+  const m=new THREE.MeshStandardMaterial({vertexColors:true,metalness:.8,roughness:.42,envMapIntensity:1.1,emissive:new THREE.Color('#ff5a14'),emissiveIntensity:0});
+  m.userData.bump={value:o.bump||1};
+  m.onBeforeCompile=sh=>{sh.uniforms.uBump=m.userData.bump;
+    sh.vertexShader=sh.vertexShader.replace('#include <common>','#include <common>\nattribute float wear;varying float vWear;varying vec3 vObj;')
+      .replace('#include <begin_vertex>','#include <begin_vertex>\nvWear=wear;vObj=position;');
+    sh.fragmentShader=sh.fragmentShader.replace('#include <common>','#include <common>\nvarying float vWear;varying vec3 vObj;uniform float uBump;'+NOISE_GLSL)
+      .replace('#include <roughnessmap_fragment>','#include <roughnessmap_fragment>\nroughnessFactor=mix(roughnessFactor,.2,vWear)*(.88+.24*vn3(vObj*60.));')
+      .replace('#include <normal_fragment_maps>',`#include <normal_fragment_maps>
+ { float hh=vn3(vObj*38.)*.6+vn3(vObj*95.+7.)*.3+vn3(vObj*210.+3.)*.1;
+   vec2 dH=vec2(dFdx(hh),dFdy(hh))*.0012*uBump*(1.-vWear*.6);
+   vec3 sp=-vViewPosition;vec3 sx=dFdx(sp),sy=dFdy(sp);vec3 R1=cross(sy,normal),R2=cross(normal,sx);float det=dot(sx,R1);
+   vec3 gr=sign(det)*(dH.x*R1+dH.y*R2);normal=normalize(abs(det)*normal-gr); }`)};
+  return m}
+/* patina colours from AO + curvature: dark brown-black in the hollows with a hint of green, warm rubbed bronze on the ridges */
+function bronzeGeometry(r,o){o=o||{};const g=new THREE.BufferGeometry();g.setAttribute('position',new THREE.BufferAttribute(r.pos,3));g.setAttribute('normal',new THREE.BufferAttribute(r.nor,3));g.setIndex(new THREE.BufferAttribute(r.idx,1));
+  const n=r.ao.length,col=new Float32Array(n*3),wear=new Float32Array(n);
+  const deep=new THREE.Color('#0b0806'),green=new THREE.Color('#1f2a1d'),base=new THREE.Color(o.base||'#2a1d13'),warm=new THREE.Color('#47301d'),hi=new THREE.Color('#9a6f3f'),c=new THREE.Color();
+  const cs=o.curv||55;
+  for(let i=0;i<n;i++){const a=r.ao[i],k=clamp(r.cur[i]/cs,-1,1),y=r.pos[i*3+1],nyy=r.nor[i*3+1];
+    const n1=Math.sin(r.pos[i*3]*31+y*17)*Math.sin(r.pos[i*3+2]*23-y*11);
+    c.copy(base).lerp(warm,.35+.25*n1);
+    const cav=clamp((1-a)*1.25+Math.max(0,-k)*.55,0,1);c.lerp(deep,cav*.85);c.lerp(green,cav*.18*(nyy>0?1:.5));
+    const w=clamp(Math.max(0,k)*1.1*a*a-.08,0,1);c.lerp(hi,w*.75);wear[i]=w;
+    col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b}
+  g.setAttribute('color',new THREE.BufferAttribute(col,3));g.setAttribute('wear',new THREE.BufferAttribute(wear,1));g.computeBoundingSphere();g.computeBoundingBox();return g}
+
+/* ---------------- sculpting (web workers) ---------------- */
+const SC=1.3,PED_H=1.0;                         // statue scale (≈1.8 m tall with its rock) and pedestal height
+const H_FINE=touch?.0058:.005;
+const SCULPT=SCULPT_WORKER();
+const LM=SCULPT.landmarks('thinker');           // anatomical landmarks (figure-local)
+function sculptAll(onProg){
+  return new Promise(resolve=>{
+    const nW=clamp((navigator.hardwareConcurrency||4)-1,2,6);
+    const jobs=[];for(let p=0;p<nW;p++)jobs.push({key:'thinker',name:'thinker',h:H_FINE,part:p,parts:nW,w:3});
+    jobs.push({key:'small',name:'thinker',h:.012,part:0,parts:1,w:.4},{key:'rock',name:'rock',h:.011,part:0,parts:1,w:.6},{key:'shade',name:'shade',h:.013,part:0,parts:1,w:.3});
+    const prog=jobs.map(()=>0),tot=jobs.reduce((s,j)=>s+j.w,0);const out={};let left=jobs.length;
+    const report=()=>onProg(jobs.reduce((s,j,i)=>s+j.w*prog[i],0)/tot);
+    const finish=()=>{const res={};for(const k of ['thinker','small','rock','shade'])res[k]=SCULPT.assemble(out[k].sort((a,b)=>a.part-b.part).map(o=>o.r));resolve(res)};
+    let url=null,workers=[],failed=false;
+    // fallback: sculpt on the main thread, one job per tick
+    const mainThread=()=>{out.thinker=out.small=out.rock=out.shade=undefined;for(const k in out)delete out[k];prog.fill(0);let i=0;
+      const step=()=>{const j=jobs[i];const M=SCULPT.MODELS[j.name]();const r=SCULPT.meshPart(M,j.h,j.part,j.parts);(out[j.key]=out[j.key]||[]).push({part:j.part,r});prog[i]=1;report();if(++i<jobs.length)setTimeout(step,0);else finish()};setTimeout(step,30)};
+    try{url=URL.createObjectURL(new Blob(['('+SCULPT_WORKER.toString()+')()'],{type:'text/javascript'}));for(let i=0;i<nW;i++)workers.push(new Worker(url))}catch(e){workers=[]}
+    if(!workers.length){mainThread();return}
+    const fail=()=>{if(failed)return;failed=true;workers.forEach(w=>w.terminate());mainThread()};
+    let next=0;
+    const give=w=>{if(failed)return;if(next>=jobs.length){w.terminate();return}const i=next++,j=jobs[i];
+      w.onerror=fail;
+      w.onmessage=e=>{if(failed)return;const m=e.data;if(m.progress!=null){prog[i]=m.progress;report()}if(m.done){prog[i]=1;report();(out[j.key]=out[j.key]||[]).push({part:j.part,r:m.r});if(--left===0){finish();if(url)URL.revokeObjectURL(url)}give(w)}};
+      w.postMessage({id:i,name:j.name,h:j.h,part:j.part,parts:j.parts})};
+    workers.forEach(give)})}
+
+/* ================= THE ROOM ================= */
+const ROOM={x:9,zb:-8.6,zf:8.6,h:8.4};
+const hits=[];             // raycast targets
+const anim=[];             // per-frame updaters
+// floor: dark polished stone tiles
+{const c=canvas(512,512),x=c.getContext('2d');const R=srand(3);x.fillStyle='#1b1916';x.fillRect(0,0,512,512);
+  for(let i=0;i<2600;i++){const v=20+R()*22;x.fillStyle=`rgba(${v+8},${v+5},${v},${.25+R()*.3})`;const px=R()*512,py=R()*512;x.beginPath();x.ellipse(px,py,2+R()*12,1+R()*4,R()*3,0,TAU);x.fill()}
+  x.strokeStyle='rgba(0,0,0,.6)';x.lineWidth=3;for(let i=0;i<=2;i++){x.beginPath();x.moveTo(0,i*256);x.lineTo(512,i*256);x.stroke();x.beginPath();x.moveTo(i*256,0);x.lineTo(i*256,512);x.stroke()}
+  const t=tex(c,true);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(9,9);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x*2,ROOM.zf-ROOM.zb),new THREE.MeshStandardMaterial({map:t,roughness:.32,metalness:.05,envMapIntensity:.5}));
+  floor.rotation.x=-Math.PI/2;floor.position.z=(ROOM.zf+ROOM.zb)/2;floor.receiveShadow=true;scene.add(floor)}
+// walls + ceiling
+{const c=canvas(256,256),x=c.getContext('2d');const R=srand(5);x.fillStyle='#2b2724';x.fillRect(0,0,256,256);for(let i=0;i<900;i++){const v=36+R()*16;x.fillStyle=`rgba(${v+4},${v},${v-4},.18)`;x.fillRect(R()*256,R()*256,2+R()*20,2+R()*6)}
+  const t=tex(c,true);t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(4,2);
+  const wm=new THREE.MeshStandardMaterial({map:t,roughness:.92,metalness:0});
+  const wall=(w,x,z,ry)=>{const m=new THREE.Mesh(new THREE.PlaneGeometry(w,ROOM.h),wm);m.position.set(x,ROOM.h/2,z);m.rotation.y=ry;m.receiveShadow=true;scene.add(m)};
+  wall(ROOM.x*2,0,ROOM.zb,0);wall(ROOM.x*2,0,ROOM.zf,Math.PI);wall(ROOM.zf-ROOM.zb,-ROOM.x,0,Math.PI/2);wall(ROOM.zf-ROOM.zb,ROOM.x,0,-Math.PI/2);
+  const ceil=new THREE.Mesh(new THREE.PlaneGeometry(ROOM.x*2,ROOM.zf-ROOM.zb),new THREE.MeshStandardMaterial({color:'#121110',roughness:1}));ceil.rotation.x=Math.PI/2;ceil.position.y=ROOM.h;scene.add(ceil);
+  const bm=new THREE.MeshStandardMaterial({color:'#141210',roughness:.6});
+  for(const [w,x,z,ry] of [[ROOM.x*2,0,ROOM.zb+.02,0],[ROOM.x*2,0,ROOM.zf-.02,Math.PI],[ROOM.zf-ROOM.zb,-ROOM.x+.02,0,Math.PI/2],[ROOM.zf-ROOM.zb,ROOM.x-.02,0,-Math.PI/2]]){const b=new THREE.Mesh(new THREE.BoxGeometry(w,.18,.04),bm);b.position.set(x,.09,z);b.rotation.y=ry;scene.add(b)}
+  // ceiling light track with lamp heads
+  const tm=new THREE.MeshStandardMaterial({color:'#1d1c1a',metalness:.6,roughness:.4});const tr=new THREE.Mesh(new THREE.BoxGeometry(.08,.06,15),tm);tr.position.set(0,ROOM.h-.05,0);scene.add(tr);
+  for(const z of [-3.4,3.6,-1.2]){const l=new THREE.Mesh(new THREE.CylinderGeometry(.09,.12,.32,16),tm);l.position.set(0,ROOM.h-.28,z);l.rotation.x=z>0?.5:-.5;scene.add(l)}}
+
+/* pedestal: polished dark granite with a bronze plaque */
+const PED={w:1.36,d:1.6,z:.16};
+const granite=(()=>{const c=canvas(256,256),x=c.getContext('2d');const R=srand(11);x.fillStyle='#1c1b1d';x.fillRect(0,0,256,256);
+  for(let i=0;i<5000;i++){const v=R();x.fillStyle=v<.5?`rgba(70,68,72,${.4+R()*.4})`:v<.85?`rgba(10,10,12,.7)`:`rgba(140,128,118,${.5+R()*.3})`;const s=.6+R()*2.2;x.fillRect(R()*256,R()*256,s,s)}
+  const t=tex(c,true);t.wrapS=t.wrapT=THREE.RepeatWrapping;return new THREE.MeshStandardMaterial({map:t,roughness:.22,metalness:.1,envMapIntensity:.8})})();
+const pedestal=new THREE.Group();scene.add(pedestal);
+{const body=new THREE.Mesh(new THREE.BoxGeometry(PED.w,PED_H-.16,PED.d),granite);body.position.set(0,(PED_H-.16)/2+.08,PED.z);
+  const cap=new THREE.Mesh(new THREE.BoxGeometry(PED.w+.1,.08,PED.d+.1),granite);cap.position.set(0,PED_H-.04,PED.z);
+  const foot=new THREE.Mesh(new THREE.BoxGeometry(PED.w+.16,.08,PED.d+.16),granite);foot.position.set(0,.04,PED.z);
+  for(const m of [body,cap,foot]){m.castShadow=m.receiveShadow=true;m.userData={type:'pedestal'};pedestal.add(m);hits.push(m)}}
+
+/* plaque: raised letters that only read in raking light */
+const PLQ={w:.66,h:.3,y:.56,z:PED.z+PED.d/2+.006};
+const plaque=(()=>{
+  const W=1024,Hh=Math.round(W*PLQ.h/PLQ.w);
+  const drawText=(x,col,dx,dy)=>{x.fillStyle=col;x.textAlign='center';x.textBaseline='middle';x.font=`700 ${Hh*.26}px Georgia,'Times New Roman',serif`;x.fillText('LE PENSEUR',W/2+dx,Hh*.32+dy);
+    x.font=`400 ${Hh*.1}px 'Gowun Batang',Georgia,serif`;x.fillText('생 각 하 는   사 람',W/2+dx,Hh*.55+dy);x.font=`700 ${Hh*.2}px Georgia,serif`;x.fillText('1 8 8 0',W/2+dx,Hh*.78+dy)};
+  const hc=canvas(W,Hh),hx=hc.getContext('2d');hx.fillStyle='#000';hx.fillRect(0,0,W,Hh);drawText(hx,'#fff',0,0);
+  const H=blurH(heightOf(hc),W,Hh,2);
+  // worn plate colour + border
+  const cc=canvas(W,Hh),cx=cc.getContext('2d');const g=cx.createLinearGradient(0,0,W,Hh);g.addColorStop(0,'#4b3420');g.addColorStop(1,'#33241a');cx.fillStyle=g;cx.fillRect(0,0,W,Hh);
+  const R=srand(21);for(let i=0;i<1400;i++){cx.fillStyle=`rgba(${R()<.5?'20,16,10':'120,90,50'},${R()*.18})`;cx.fillRect(R()*W,R()*Hh,1+R()*6,1+R()*3)}
+  cx.strokeStyle='rgba(190,150,90,.55)';cx.lineWidth=10;cx.strokeRect(14,14,W-28,Hh-28);
+  const mat=new THREE.MeshStandardMaterial({map:tex(cc,true),normalMap:tex(normalFromHeight(H,W,Hh,1.2)),normalScale:new THREE.Vector2(.16,.16),metalness:.75,roughness:.55});
+  const m=new THREE.Mesh(new THREE.BoxGeometry(PLQ.w,PLQ.h,.012),[granite,granite,granite,granite,mat,granite]);m.position.set(0,PLQ.y,PLQ.z);m.castShadow=true;m.userData={type:'plaque'};scene.add(m);hits.push(m);
+  // raking-light reading layers: highlight on the lit side, shadow on the other
+  const mk=sgn=>{const c=canvas(W,Hh),x=c.getContext('2d');x.clearRect(0,0,W,Hh);drawText(x,'rgba(8,5,2,.95)',-sgn*7,3);drawText(x,'rgba(255,214,150,.95)',sgn*3,-1);drawText(x,'rgba(120,84,46,1)',0,0);return tex(c,true)};
+  const lay=new THREE.Mesh(new THREE.PlaneGeometry(PLQ.w,PLQ.h),new THREE.MeshBasicMaterial({map:mk(1),transparent:true,opacity:0,depthWrite:false}));lay.position.set(0,PLQ.y,PLQ.z+.0075);scene.add(lay);
+  return {m,lay,texR:lay.material.map,texL:mk(-1)}})();
+
+/* stanchions + velvet ropes around the pedestal */
+{const brass=new THREE.MeshStandardMaterial({color:'#b58b4a',metalness:1,roughness:.28});const rope=new THREE.MeshStandardMaterial({color:'#5a0f14',roughness:.75});
+  const P=[[-1.45,-1.25],[1.45,-1.25],[1.75,1.05],[-1.75,1.05]].map(([x,z])=>V3(x,0,z+PED.z+.2));
+  for(const p of P){const post=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.92,12),brass);post.position.set(p.x,.46,p.z);const top=new THREE.Mesh(new THREE.SphereGeometry(.045,16,12),brass);top.position.set(p.x,.95,p.z);
+    const base=new THREE.Mesh(new THREE.CylinderGeometry(.15,.17,.04,24),brass);base.position.set(p.x,.02,p.z);scene.add(post,top,base);post.castShadow=true}
+  for(let i=0;i<P.length;i++){const a=P[i],b=P[(i+1)%P.length];if(i===2)continue;const mid=a.clone().lerp(b,.5);mid.y=.62;const cur=new THREE.QuadraticBezierCurve3(V3(a.x,.88,a.z),mid,V3(b.x,.88,b.z));scene.add(new THREE.Mesh(new THREE.TubeGeometry(cur,24,.016,8),rope))}}
+
+/* ================= THE GATES OF HELL (back wall) ================= */
+const GATE={z:ROOM.zb+.75};
+const gates=new THREE.Group();gates.position.set(0,0,GATE.z);scene.add(gates);
+const gateMat=(()=>{const r=reliefMaps(256,512,77,110,.7);r.color.wrapS=r.color.wrapT=r.normal.wrapS=r.normal.wrapT=THREE.RepeatWrapping;return new THREE.MeshStandardMaterial({map:r.color,normalMap:r.normal,normalScale:new THREE.Vector2(1.2,1.2),metalness:.75,roughness:.5,envMapIntensity:.7})})();
+const plainBronze=new THREE.MeshStandardMaterial({color:'#2e2116',metalness:.8,roughness:.45,envMapIntensity:.7});
+function gbox(w,h,d,x,y,z,mat){const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat||plainBronze);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;m.userData={type:'gates'};gates.add(m);hits.push(m);return m}
+function reliefPanel(w,h,seg,seed,count,disp,x,y,z){const r=reliefMaps(Math.round(256*Math.max(1,w/h)),Math.round(256*Math.max(1,h/w)),seed,count,.95);
+  const mat=new THREE.MeshStandardMaterial({map:r.color,normalMap:r.normal,normalScale:new THREE.Vector2(1.4,1.4),displacementMap:r.height,displacementScale:disp,displacementBias:-disp*.25,metalness:.78,roughness:.48,envMapIntensity:.75});
+  const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h,seg[0],seg[1]),mat);m.position.set(x,y,z);m.castShadow=m.receiveShadow=true;
+  m.customDepthMaterial=new THREE.MeshDepthMaterial({depthPacking:THREE.RGBADepthPacking,displacementMap:r.height,displacementScale:disp,displacementBias:-disp*.25});
+  m.userData={type:'gates'};gates.add(m);hits.push(m);return m}
+{const q=touch?.6:1;
+  gbox(4.6,.4,1.25,0,.2,0);                                                     // plinth
+  for(const s of [-1,1]){gbox(.66,4.75,.95,s*1.88,.4+2.375,0,gateMat);reliefPanel(.58,4.6,[Math.round(30*q),Math.round(220*q)],s>0?31:32,26,.06,s*1.88,.4+2.375,.478)} // pilasters
+  gbox(3.1,4.75,.3,0,.4+2.375,-.32);                                            // dark recess behind the doors
+  reliefPanel(1.5,4.5,[Math.round(80*q),Math.round(240*q)],41,150,.16,-.765,.42+2.25,-.12);reliefPanel(1.5,4.5,[Math.round(80*q),Math.round(240*q)],42,150,.16,.765,.42+2.25,-.12); // the two leaves
+  gbox(.05,4.5,.12,0,.42+2.25,-.1);
+  gbox(4.6,.3,1.05,0,5.3,0);                                                    // lintel
+  gbox(4.1,1.2,.6,0,6.05,-.15);reliefPanel(4.0,1.14,[Math.round(200*q),Math.round(60*q)],51,60,.1,0,6.05,.155);  // tympanum
+  gbox(1.0,.1,.55,0,5.5,.42);                                                   // ledge for the Poet
+  gbox(4.9,.3,1.3,0,6.8,0);gbox(4.6,.14,1.1,0,6.6,0)}                           // cornice
+const poetAnchor=new THREE.Group();poetAnchor.position.set(0,5.55,.34);gates.add(poetAnchor);
+const shadesAnchor=new THREE.Group();shadesAnchor.position.set(0,6.95,.05);gates.add(shadesAnchor);
+{const ph=new THREE.Mesh(new THREE.SphereGeometry(.42,12,8),new THREE.MeshBasicMaterial({visible:false}));ph.position.set(0,5.95,.5);ph.userData={type:'poet'};gates.add(ph);hits.push(ph);
+  const sh=new THREE.Mesh(new THREE.BoxGeometry(2.0,1.0,.9),new THREE.MeshBasicMaterial({visible:false}));sh.position.set(0,7.45,0);sh.userData={type:'shades'};gates.add(sh);hits.push(sh)}
+
+/* ================= EXIT (front wall) ================= */
+const exitG=new THREE.Group();exitG.position.set(0,0,ROOM.zf-.02);exitG.rotation.y=Math.PI;scene.add(exitG);
+{const wood=new THREE.MeshStandardMaterial({color:'#2a1d14',roughness:.55,metalness:.1}),frame=new THREE.MeshStandardMaterial({color:'#15110d',roughness:.5});
+  const fr=new THREE.Mesh(new THREE.BoxGeometry(2.6,3.7,.16),frame);fr.position.set(0,1.85,.04);exitG.add(fr);
+  for(const s of [-1,1]){const d=new THREE.Mesh(new THREE.BoxGeometry(1.12,3.4,.08),wood);d.position.set(s*.57,1.72,.14);d.userData={type:'door'};exitG.add(d);hits.push(d);
+    for(const y of [.95,2.45]){const p=new THREE.Mesh(new THREE.BoxGeometry(.8,1.1,.03),wood);p.position.set(s*.57,y,.19);exitG.add(p)}
+    const h=new THREE.Mesh(new THREE.CylinderGeometry(.018,.018,.42,10),new THREE.MeshStandardMaterial({color:'#c9a25c',metalness:1,roughness:.3}));h.position.set(s*.1,1.65,.22);exitG.add(h)}
+  // keypad lock box
+  const kp=new THREE.Mesh(new THREE.BoxGeometry(.26,.38,.06),new THREE.MeshStandardMaterial({color:'#20201f',metalness:.6,roughness:.4}));kp.position.set(1.55,1.45,.06);kp.userData={type:'door'};exitG.add(kp);hits.push(kp);
+  const led=new THREE.Mesh(new THREE.PlaneGeometry(.16,.06),new THREE.MeshBasicMaterial({color:'#ff3b2a'}));led.position.set(1.55,1.56,.095);exitG.add(led);exitG.userData.led=led;
+  // EXIT sign
+  const sc=canvas(256,96),sx=sc.getContext('2d');sx.fillStyle='#0d6b3a';sx.fillRect(0,0,256,96);sx.fillStyle='#e9fff0';sx.font='700 44px Georgia,sans-serif';sx.textAlign='center';sx.textBaseline='middle';sx.fillText('출구 EXIT',128,50);
+  const sign=new THREE.Mesh(new THREE.PlaneGeometry(.9,.34),new THREE.MeshBasicMaterial({map:tex(sc,true)}));sign.position.set(0,3.95,.06);exitG.add(sign);
+  const gl=glowSprite(0x2aff8a,1.6,.35);gl.position.set(0,3.95,.2);exitG.add(gl);
+  const pl=new THREE.PointLight(0x47ff9a,1.2,5,2);pl.position.set(0,3.8,.6);exitG.add(pl)}
+
+/* bench facing the statue */
+{const wd=new THREE.MeshStandardMaterial({color:'#3a2a1c',roughness:.6}),mt=new THREE.MeshStandardMaterial({color:'#151515',metalness:.7,roughness:.4});
+  const b=new THREE.Mesh(new THREE.BoxGeometry(2.2,.08,.5),wd);b.position.set(0,.46,5.6);b.castShadow=b.receiveShadow=true;scene.add(b);
+  for(const s of [-1,1]){const l=new THREE.Mesh(new THREE.BoxGeometry(.06,.42,.44),mt);l.position.set(s*.95,.22,5.6);scene.add(l)}}
+
+/* ================= LIGHTS ================= */
+scene.add(new THREE.HemisphereLight(0x8090a8,0x1c150e,.45));
+// soft wall washers so the room reads as a room
+for(const [x,z,tx,tz] of [[-5,4,-9,1],[5,4,9,1],[-5,-3,-9,-3],[5,-3,9,-3],[0,3,0,8.6]]){const w=new THREE.SpotLight(0xffe6c4,38,0,.7,1,1.2);w.position.set(x,7.6,z);w.target.position.set(tx,2.2,tz);scene.add(w,w.target)}
+const STAT_C=V3(0,PED_H+.72*SC,.12*SC);           // visual centre of the statue
+const key=new THREE.SpotLight(0xffd9ad,170,0,.46,.55,1.5);key.castShadow=true;key.shadow.mapSize.set(touch?1024:2048,touch?1024:2048);key.shadow.bias=-.00025;key.shadow.normalBias=.012;key.shadow.camera.near=1;key.shadow.camera.far=14;
+key.target.position.copy(STAT_C).add(V3(0,-.35,.15));scene.add(key,key.target);
+function placeKey(deg){const a=deg*Math.PI/180,R=4.3;key.position.set(Math.sin(a)*R,5.3,PED.z+Math.cos(a)*R)}
+const rim=new THREE.SpotLight(0xc9d2e6,105,0,.42,.7,1.5);rim.position.set(-2.6,5.6,-3.6);rim.target.position.copy(STAT_C);scene.add(rim,rim.target);
+const rim2=new THREE.SpotLight(0xffe2c0,70,0,.4,.8,1.5);rim2.position.set(3.4,4.2,-2.4);rim2.target.position.copy(STAT_C);scene.add(rim2,rim2.target);
+const gateLight=new THREE.SpotLight(0xffc98a,240,0,.62,.6,1.4);gateLight.position.set(0,ROOM.h-.3,GATE.z+5.2);gateLight.target.position.set(0,3.9,GATE.z);gateLight.castShadow=true;gateLight.shadow.mapSize.set(touch?1024:2048,touch?1024:2048);gateLight.shadow.bias=-.0004;scene.add(gateLight,gateLight.target);
+const topLight=new THREE.SpotLight(0xffe0b0,120,0,.3,.6,1.3);topLight.position.set(1.2,ROOM.h-.2,GATE.z+3.4);topLight.target.position.set(0,6.9,GATE.z);scene.add(topLight,topLight.target);
+const gateGraze=new THREE.SpotLight(0xcfd8ff,90,0,.5,.8,1.4);gateGraze.position.set(-4.2,1.2,GATE.z+1.6);gateGraze.target.position.set(.6,4.2,GATE.z);scene.add(gateGraze,gateGraze.target);
+// soft volumetric beam for the key light
+const beamMat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,uniforms:{uCol:{value:new THREE.Color('#ffd9a6')},uOp:{value:.05}},
+  vertexShader:`varying float vY;varying vec3 vN;varying vec3 vV;void main(){vY=uv.y;vec4 mv=modelViewMatrix*vec4(position,1.);vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);gl_Position=projectionMatrix*mv;}`,
+  fragmentShader:`uniform vec3 uCol;uniform float uOp;varying float vY;varying vec3 vN;varying vec3 vV;void main(){float f=pow(abs(dot(vN,vV)),1.5);gl_FragColor=vec4(uCol,f*uOp*smoothstep(0.,.6,vY)*(.35+.65*vY));}`});
+const beam=new THREE.Mesh(new THREE.CylinderGeometry(.06,1.15,1,32,1,true),beamMat);beam.geometry.translate(0,-.5,0);scene.add(beam);
+function aimBeam(){reshadow();const a=key.position,b=key.target.position.clone().add(V3(0,-.4,0));const d=b.clone().sub(a);beam.position.copy(a);beam.scale.set(1,d.length(),1);beam.quaternion.setFromUnitVectors(V3(0,-1,0),d.normalize())}
+placeKey(S.lightAz);aimBeam();
+// dust drifting in the light
+const dust=(()=>{const n=touch?160:260;const g=new THREE.BufferGeometry();const p=new Float32Array(n*3),ph=new Float32Array(n);for(let i=0;i<n;i++){p[i*3]=(Math.random()-.5)*4;p[i*3+1]=Math.random()*5.5;p[i*3+2]=(Math.random()-.5)*4+.3;ph[i]=Math.random()*TAU}
+  g.setAttribute('position',new THREE.BufferAttribute(p,3));const m=new THREE.PointsMaterial({map:glowTex,color:'#ffe2b0',size:.035,transparent:true,opacity:.55,depthWrite:false,blending:THREE.AdditiveBlending});const pts=new THREE.Points(g,m);scene.add(pts);
+  anim.push((t,dt)=>{for(let i=0;i<n;i++){p[i*3+1]+=Math.sin(t*.3+ph[i])*.03*dt+.01*dt;p[i*3]+=Math.cos(t*.2+ph[i])*.03*dt;if(p[i*3+1]>5.5)p[i*3+1]=0}g.attributes.position.needsUpdate=true});return pts})();
+
+/* ================= STATUE (filled in once the workers finish) ================= */
+const statue=new THREE.Group();statue.position.set(0,PED_H+.065*SC,0);statue.scale.setScalar(SC);scene.add(statue);
+let thinkerMesh=null,hoverProxy=null,castT=-1;const collide=[];const bronzeMats=[];
+function addStatue(res){
+  const mat=bronzeMaterial({bump:1});bronzeMats.push(mat);
+  const gT=bronzeGeometry(res.thinker),gR=bronzeGeometry(res.rock,{curv:30,base:'#36261a'}),gS=bronzeGeometry(res.small),gH=bronzeGeometry(res.shade,{curv:30});
+  thinkerMesh=new THREE.Mesh(gT,mat);thinkerMesh.castShadow=thinkerMesh.receiveShadow=true;thinkerMesh.userData={type:'statue'};statue.add(thinkerMesh);hits.push(thinkerMesh);
+  const rk=new THREE.Mesh(gR,mat);rk.castShadow=rk.receiveShadow=true;rk.userData={type:'rock'};statue.add(rk);hits.push(rk);
+  // the Poet on the gates (same figure, smaller) + the shades
+  const gm=bronzeMaterial({bump:.6});bronzeMats.push(gm);
+  const poet=new THREE.Group();poet.scale.setScalar(.48);poet.position.y=.065*.48;poet.add(new THREE.Mesh(gS,gm),new THREE.Mesh(gR,gm));poet.traverse(o=>{if(o.isMesh)o.castShadow=o.receiveShadow=true});poetAnchor.add(poet);
+  for(const [x,z,ry] of [[-.5,.05,.75],[0,-.2,0],[.5,.05,-.75]]){const s=new THREE.Mesh(gH,gm);s.scale.setScalar(.58);s.position.set(x,0,z);s.rotation.y=ry;s.castShadow=s.receiveShadow=true;shadesAnchor.add(s)}
+  // low-res copy of the figure (and the rock) used only to keep the camera outside the bronze
+  for(const g of [gS,gR]){const c=new THREE.Mesh(g,new THREE.MeshBasicMaterial({visible:false}));statue.add(c);collide.push(c)}
+  const bb=gT.boundingBox,proxy=new THREE.Mesh(new THREE.BoxGeometry(bb.max.x-bb.min.x,bb.max.y-bb.min.y,bb.max.z-bb.min.z),new THREE.MeshBasicMaterial({visible:false}));
+  bb.getCenter(proxy.position);proxy.userData={type:'statue'};statue.add(proxy);hoverProxy=proxy;
+  castT=0;reshadow()}
+function updateCast(dt){if(castT<0)return;castT+=dt;const k=clamp(castT/2.6,0,1);for(const m of bronzeMats){m.emissiveIntensity=(1-k)*(1-k)*2.2;m.emissive.setRGB(1,.25+.35*(1-k),.05)}if(k>=1)castT=-1}
+
+/* ================= camera: orbit with focus targets ================= */
+const VIEWS={
+  main:{t:STAT_C.clone().add(V3(0,-.05,0)),d:4.7,az:.18,el:.1,dMin:2.1,dMax:6.6,elMin:-.15,elMax:1.1},
+  gates:{t:V3(0,5.25,GATE.z),d:8.4,az:0,el:.1,dMin:3.2,dMax:9,elMin:-.15,elMax:.5,azMin:-.75,azMax:.75},
+  door:{t:V3(0,1.9,ROOM.zf),d:4.2,az:Math.PI,el:.05,dMin:2.2,dMax:6,elMin:-.1,elMax:.6,azMin:Math.PI-.8,azMax:Math.PI+.8},
+  plaque:{t:V3(0,PLQ.y+.12,PLQ.z),d:1.7,az:0,el:.16,dMin:.8,dMax:3,elMin:-.1,elMax:.8,azMin:-1.1,azMax:1.1}};
+let camHitN=0,camHitD=-1;
+const cam={t:VIEWS.main.t.clone(),d:6.5,az:.7,el:.25,goal:{t:VIEWS.main.t.clone(),d:VIEWS.main.d,az:VIEWS.main.az,el:VIEWS.main.el},lim:VIEWS.main,focus:'main',vaz:0,vel:0,drag:false,auto:true};
+const portrait=()=>camera.aspect<.95;
+function setView(name,over){const v=VIEWS[name]||over;cam.focus=name;cam.lim=v;cam.goal.t.copy(v.t);cam.goal.d=v.d*(portrait()&&name!=='close'?1.32:1);cam.goal.el=v.el;
+  if(name==='plaque'&&portrait())cam.goal.t.y-=.28;
+  // keep the shortest way round
+  let az=v.az;while(az-cam.az>Math.PI)az-=TAU;while(az-cam.az<-Math.PI)az+=TAU;cam.goal.az=az;cam.vaz=cam.vel=0;renderHUD()}
+function closeUp(target,dir,dist){const az=Math.atan2(dir.x,dir.z),el=clamp(Math.asin(clamp(dir.y,-1,1)),-.35,.85);
+  setView('close',{t:target.clone(),d:dist,az,el,dMin:.35,dMax:2.6,elMin:-.5,elMax:1.2,n:dir.clone().normalize()})}
+function updateCam(dt){const k=1-Math.pow(.0016,dt);const g=cam.goal,L=cam.lim;
+  if(!cam.drag){g.az+=cam.vaz*dt;g.el+=cam.vel*dt;const dec=Math.pow(.04,dt);cam.vaz*=dec;cam.vel*=dec}
+  if(cam.auto)g.az+=dt*(S.escaped?.05:.08);
+  if(L.azMin!=null){const mid=(L.azMin+L.azMax)/2;let rel=g.az-mid;while(rel>Math.PI)rel-=TAU;while(rel<-Math.PI)rel+=TAU;rel=clamp(rel,L.azMin-mid,L.azMax-mid);g.az=mid+rel}
+  g.el=clamp(g.el,L.elMin,L.elMax);
+  // close-up: stay on the outside of the surface we walked up to
+  if(L.n){const ce0=Math.cos(g.el);if(Math.sin(g.az)*ce0*L.n.x+Math.sin(g.el)*L.n.y+Math.cos(g.az)*ce0*L.n.z<.2){g.az=cam.pAz;g.el=cam.pEl;cam.vaz=cam.vel=0}}
+  cam.pAz=g.az;cam.pEl=g.el;g.d=clamp(g.d,L.dMin,L.dMax*(portrait()?1.32:1));
+  cam.t.lerp(g.t,k);cam.d=lerp(cam.d,g.d,k);cam.az=lerp(cam.az,g.az,k);cam.el=lerp(cam.el,g.el,k);
+  const ce=Math.cos(cam.el);const p=V3(cam.t.x+cam.d*Math.sin(cam.az)*ce,cam.t.y+cam.d*Math.sin(cam.el),cam.t.z+cam.d*Math.cos(cam.az)*ce);
+  // never let the camera pass into the statue: stop just in front of the surface between target and eye
+  if(collide.length&&cam.focus==='close'){if(++camHitN%3===0||camHitD<0){const dir=p.clone().sub(cam.t).normalize();ray.set(cam.t.clone().addScaledVector(dir,.02),dir);ray.near=0;ray.far=cam.d;const h=ray.intersectObjects(collide,false)[0];camHitD=h?Math.max(.1,h.distance+.02-.07):1e9;ray.far=Infinity}
+    if(camHitD<cam.d)p.copy(cam.t).addScaledVector(p.clone().sub(cam.t).normalize(),camHitD)}else camHitD=-1;
+  p.x=clamp(p.x,-ROOM.x+.3,ROOM.x-.3);p.z=clamp(p.z,ROOM.zb+.4,ROOM.zf-.3);p.y=clamp(p.y,.25,ROOM.h-.3);
+  camera.position.copy(p);camera.lookAt(cam.t)}
+
+/* ================= AUDIO ================= */
+const AU={ctx:null,master:null,pad:[],on:true};
+function auInit(){if(AU.ctx)return;try{const c=new(window.AudioContext||window.webkitAudioContext)();AU.ctx=c;AU.master=c.createGain();AU.master.gain.value=AU.on?.9:0;const comp=c.createDynamicsCompressor();AU.master.connect(comp);comp.connect(c.destination)}catch(e){AU.ctx=null}}
+function auPad(fr){if(!AU.ctx)return;const c=AU.ctx,now=c.currentTime;AU.pad.forEach(n=>{n.g.gain.cancelScheduledValues(now);n.g.gain.setTargetAtTime(0,now,.7);setTimeout(()=>{try{n.o.stop();n.o2.stop();n.l.stop()}catch(e){}},4000)});AU.pad=[];
+  const lp=c.createBiquadFilter();lp.type='lowpass';lp.frequency.value=700;lp.connect(AU.master);
+  fr.forEach((f,i)=>{const o=c.createOscillator(),o2=c.createOscillator(),g=c.createGain(),l=c.createOscillator(),lg=c.createGain();o.type='sine';o2.type='triangle';o.frequency.value=f;o2.frequency.value=f*1.003;g.gain.value=0;
+    o.connect(g);o2.connect(g);g.connect(lp);l.frequency.value=.04+i*.027;lg.gain.value=.01;l.connect(lg);lg.connect(g.gain);o.start();o2.start();l.start();g.gain.setTargetAtTime(.022,now,2);AU.pad.push({o,o2,l,g})})}
+function auChime(f,vol){if(!AU.ctx)return;const c=AU.ctx,n=c.currentTime;vol=vol||.16;[1,2.76,5.4].forEach((m,i)=>{const o=c.createOscillator(),g=c.createGain();o.type='sine';o.frequency.value=f*m;g.gain.setValueAtTime(0,n);g.gain.linearRampToValueAtTime(vol/(i+1.4),n+.008);g.gain.exponentialRampToValueAtTime(.0001,n+2.6/(1+i*.7));o.connect(g);g.connect(AU.master);o.start(n);o.stop(n+2.8)})}
+function auArp(base){[0,3,7,12,15].forEach((s,i)=>setTimeout(()=>auChime(base*Math.pow(2,s/12),.12),i*120))}
+function auBuzz(){if(!AU.ctx)return;const c=AU.ctx,n=c.currentTime,o=c.createOscillator(),g=c.createGain(),f=c.createBiquadFilter();o.type='sawtooth';o.frequency.value=98;f.type='lowpass';f.frequency.value=500;g.gain.setValueAtTime(.08,n);g.gain.exponentialRampToValueAtTime(.0001,n+.35);o.connect(f);f.connect(g);g.connect(AU.master);o.start(n);o.stop(n+.4)}
+const PAD=[110,164.81,220,261.63,329.63];
+
+/* ================= tweens ================= */
+const tweens=[];
+function tween(dur,fn,done,delay){tweens.push({t0:performance.now()+(delay||0),dur:reduce?Math.min(dur,250):dur,fn,done})}
+const easeOut=k=>1-Math.pow(1-k,3);
+function runTweens(now){for(let i=tweens.length-1;i>=0;i--){const tw=tweens[i];if(now<tw.t0)continue;const k=Math.min(1,(now-tw.t0)/tw.dur);tw.fn(k);if(k>=1){tweens.splice(i,1);tw.done&&tw.done()}}}
+function pulseAt(p,color){const s=glowSprite(color||0xffd38a,.1,.95);s.position.copy(p);s.renderOrder=9;s.material.depthTest=false;scene.add(s);tween(1000,k=>{s.scale.setScalar(.1+.55*easeOut(k));s.material.opacity=.95*(1-k)},()=>scene.remove(s))}
+
+/* ================= PUZZLE A · the body that thinks ================= */
+const lm=k=>statue.localToWorld(V3(...LM.L[k]));
+const REG=[
+  {part:'brow',pts:['brow'],r:.036,face:1},{part:'nose',pts:['nose'],r:.026,face:1},{part:'lips',pts:['lips'],r:.02,face:1},
+  {part:'fist',pts:['fistR'],r:.075},
+  {part:'arm',segs:[['shR','elR',.075],['elR','wrR',.065],['shL','elL',.075],['elL','wrL',.065]]},
+  {part:'back',pts:['back','backLow'],r:.15},
+  {part:'leg',segs:[['hipR','kneeR',.12],['hipL','kneeL',.12],['kneeR','ankR',.085],['kneeL','ankL',.085]]},
+  {part:'toes',pts:['toesR','toesL'],r:.065},
+  {info:'왼손은 힘을 빼고 무릎 너머로 늘어뜨렸어요. 꽉 움켜쥔 주먹은 반대쪽 손이에요.',pts:['handL'],r:.065},
+  {info:'점토 덩어리를 손으로 꾹꾹 눌러 붙인 듯한 머리카락이에요. 로댕은 손자국을 일부러 남겼어요.',pts:['head'],r:.1,face:2},
+  {info:'귀예요. 고개를 숙여 귀가 앞으로 기울었어요.',pts:['ear'],r:.035,face:2},
+  {info:'가슴 근육이에요. 몸을 숙여 가슴이 움츠러들었어요.',pts:['chest'],r:.1},
+  {info:'배예요. 몸을 깊이 숙이자 배 근육이 접혀 주름이 졌어요.',pts:['belly'],r:.1},
+  {info:'어깨예요. 오른 어깨가 앞으로 쏠려 있죠? 오른팔이 몸을 가로질러 반대쪽으로 갔기 때문이에요.',pts:['shoulderR','shoulderL'],r:.075},
+  {info:'무릎이에요. 왼쪽 무릎 위에 무엇이 놓여 있는지 보세요.',pts:['kneeR','kneeL'],r:.06},
+  {info:'목이에요. 고개를 깊이 숙여 목덜미가 길게 당겨졌어요.',pts:['neck'],r:.06},
+  {info:'바위에 앉은 엉덩이예요. 몸무게가 바위에 실려 납작하게 눌렸어요.',pts:['glute'],r:.15}];
+const segDist=(p,a,b)=>{const ab=b.clone().sub(a),t=clamp(p.clone().sub(a).dot(ab)/ab.lengthSq(),0,1);return a.clone().addScaledVector(ab,t).distanceTo(p)};
+const PART_TXT={
+  brow:['찌푸린 이마','눈썹 사이 근육이 불룩하게 모이고, 눈두덩이 깊은 그늘에 잠겼어요. 로댕은 고민하는 얼굴을 표정이 아니라 살과 뼈의 덩어리로 빚었어요.'],
+  nose:['벌름거리는 콧구멍','콧방울이 부풀어 있어요. 생각에 잠겨 숨을 깊게 들이쉬는 순간이에요. 이렇게 작은 부분에도 숨결이 들어 있어요.'],
+  lips:['꽉 다문 입술','입술이 주먹에 눌린 채 굳게 닫혀 있어요. 말을 아끼고 생각을 속으로 누르고 있는 모습이에요.'],
+  arm:['비틀린 팔','오른 팔꿈치가 오른쪽이 아니라 <b>왼쪽 무릎</b> 위에 놓여 있어요! 직접 따라 해 보면 몸을 크게 비틀어야 하죠. 로댕은 이 불편한 자세로 온몸에 긴장을 만들었어요.'],
+  back:['활처럼 굽은 등','등 근육과 어깨뼈가 불룩 솟아 있어요. 얼굴이 보이지 않는 뒤에서도 그가 깊이 생각하고 있다는 걸 알 수 있지요. 조각은 360도 모든 방향에서 보는 예술이에요.'],
+  leg:['힘이 들어간 다리','앉아서 쉬는 것 같지만 허벅지와 종아리 근육이 팽팽해요. 언제든 벌떡 일어날 것처럼 힘이 차 있어요.'],
+  fist:['움켜쥔 주먹','오른손을 말아 쥐고 그 위에 턱을 괴었어요. 손등에 불거진 힘줄과 마디까지 살펴보세요.'],
+  toes:['바위를 움켜쥔 발가락','발가락이 바위를 꽉 붙잡고 있어요. 특히 왼발은 바위 끝에 걸쳐 오므라들었어요. 생각이 발끝까지 내려가 있는 거예요.']};
+function regionAt(pW){let best=null,bs=1e9;const pL=statue.worldToLocal(pW.clone());const J=k=>V3(...LM.J[k]);
+  for(const g of REG){if(g.pts)for(const k of g.pts){const s=V3(...LM.L[k]).distanceTo(pL)/g.r;if(s<bs){bs=s;best=g}}
+    if(g.segs)for(const [a,b,r] of g.segs){const s=segDist(pL,J(a),J(b))/r;if(s<bs){bs=s;best=g}}}
+  return bs<1.5?best:null}
+function faceView(){const c=lm('nose'),fw=V3(...LM.L.faceFw);const dir=V3(fw.x+.32,-.05,Math.max(.6,fw.z)).normalize();const t=lm('brow').lerp(c,.5).lerp(lm('lips'),.25);closeUp(t,dir,.62)}
+function tapStatue(hit){const g=regionAt(hit.point);const n=hit.face?hit.face.normal.clone().transformDirection(hit.object.matrixWorld):V3(0,0,1);
+  if(!g){toast('근육 하나하나가 살아 있는 듯 울퉁불퉁해요. 로댕이 말한 몸의 부분을 찾아보세요.');return}
+  if(g.face&&cam.d>1.4){faceView();toast('얼굴로 다가갔어요. 이마, 콧구멍, 입술을 하나씩 눌러 보세요.');return}
+  if(g.info){toast(g.info);pulseAt(hit.point,0x9fb4ff);return}
+  pulseAt(hit.point);
+  if(!g.face&&cam.d>1.6){const d=V3(n.x,clamp(n.y,-.3,.7),n.z).normalize();closeUp(hit.point,d,g.part==='back'?1.5:1.15)}
+  if(S.found.includes(g.part)){toast(`이미 찾은 부분이에요 · ${PART_TXT[g.part][0]}`);return}
+  S.found.push(g.part);save();const k=S.found.length;auChime(330*Math.pow(2,[0,3,5,7,10,12,15,17][k-1]/12),.14);
+  const T=PART_TXT[g.part];
+  openCard(`<div class="sub">온몸으로 생각하기 · ${k} / 8</div><h2>${T[0]}</h2><p>${T[1]}</p>`,[[k===8?'다 찾았어요':'계속 찾기',closeModal]]);
+  renderHUD()}
+function doneA(){S.doneA=true;save();auArp(261.63);openCard(`<div class="sub">단서 1 / 3</div><h2>온몸이 생각하고 있어요</h2><div class="big">8</div>
+  <p>로댕이 말한 생각하는 몸의 부분 <b>8곳</b>을 모두 찾았어요. 이 숫자를 기억하세요.</p>
+  <ul><li>로댕은 실제 사람의 근육을 오래 관찰하고, 모델에게 같은 자세를 시켜 여러 방향에서 빚었어요.</li><li>매끈하게 다듬지 않고 손자국과 덩어리를 남겨, 빛이 닿으면 살갗이 떨리는 것처럼 보이게 했어요.</li></ul>`,[['좋아요',()=>{closeModal();setView('main')}]]);renderHUD()}
+
+/* ================= PUZZLE B · the Gates of Hell ================= */
+function tapGates(type){
+  if(cam.focus!=='gates'){setView('gates');if(!S.gates.seen){S.gates.seen=true;save();setTimeout(()=>openCard(`<div class="sub">뒷벽의 거대한 청동 문</div><h2>지옥의 문</h2>
+    <p>높이 6미터가 넘는 문에 180명이 넘는 인물이 몸부림치고 있어요. 이탈리아 시인 단테의 『신곡』 지옥편을 바탕으로 로댕이 평생 고치고 또 고친 작품이에요. 로댕은 세상을 떠날 때까지 이 문을 완성하지 못했어요.</p>
+    <p class="task">문 위쪽을 잘 보세요. 어디선가 본 인물이 앉아 있어요. 그리고 맨 꼭대기에 선 인물들도 눌러 보세요.</p>`,[['살펴보기',closeModal]]),900)}return}
+  if(type==='poet'){if(!S.gates.poet){S.gates.poet=true;save();auChime(392,.14)}
+    openCard(`<div class="sub">지옥의 문 · 문 위의 인물</div><h2>여기에도 생각하는 사람이!</h2>
+    <p>문 위 한가운데에 앉아 아래의 지옥을 내려다보는 작은 인물, 바로 <b>생각하는 사람</b>이에요.</p>
+    <p>로댕은 프랑스 정부로부터 새로 지을 미술관의 청동 문을 주문받고, 문 꼭대기에 지옥을 내려다보며 시를 짓는 단테를 앉혔어요. 그래서 이 조각의 원래 이름은 <b>'시인'</b>이었어요. 나중에 따로 크게 만들어 세상에 내놓으면서 <b>'생각하는 사람'</b>으로 불리게 되었어요.</p>`,[['닫기',closeModal]]);renderHUD()}
+  else if(type==='shades'){if(!S.gates.shades){S.gates.shades=true;save();auChime(349.23,.14)}
+    openCard(`<div class="sub">지옥의 문 · 맨 꼭대기</div><h2>고개 숙인 망령들</h2>
+    <p>문 맨 위에서 고개를 푹 숙이고 서 있는 망령들이에요. 지옥의 입구를 가리키고 있다고 해요.</p>
+    <p>잘 보면 모두 <b>똑같은 조각</b>이에요. 로댕은 같은 조각을 여러 번 떠서 방향만 바꿔 세웠어요. 한 사람을 여러 각도에서 동시에 보여 주는 아이디어지요.</p>
+    <p class="task">망령은 모두 몇일까요? 직접 세어 두세요.</p>`,[['닫기',closeModal]]);renderHUD()}
+  else toast('문짝마다 인물들이 뒤엉켜 있어요. 문 위쪽과 맨 꼭대기를 살펴보세요.')}
+function checkB(){if(S.gates.poet&&S.gates.shades&&!S.doneB){S.doneB=true;save();auArp(293.66);toast('단서 2를 찾았어요! 꼭대기의 망령 수를 기억하세요.');renderHUD()}}
+
+/* ================= PUZZLE C · read the plaque with light ================= */
+let rakeHold=0,lightOpen=false;
+function setLightOpen(v){lightOpen=v;$('lightPanel').hidden=!v||!S.started;$('lightBtn').setAttribute('aria-pressed',String(v))}
+function tapPlaque(){setView('plaque');setLightOpen(true);
+  if(!S.plaque)setTimeout(()=>{if(!modalOpen&&!S.plaque)toast('명판의 글씨가 닳아서 정면 빛으로는 잘 보이지 않아요. 조명 방향을 돌려 보세요.')},700)}
+function rake(){const a=S.lightAz*Math.PI/180;return Math.cos(a)>-.12?Math.abs(Math.sin(a)):0}
+function updatePlaque(dt){const r=rake();const vis=smooth(.86,.97,r);plaque.lay.material.opacity=lerp(plaque.lay.material.opacity,Math.max(vis,S.escaped?0:0),.2);
+  plaque.lay.material.map=S.lightAz>=0?plaque.texR:plaque.texL;
+  if(!S.plaque&&S.started&&!modalOpen&&cam.focus==='plaque'&&vis>.85){rakeHold+=dt;if(rakeHold>.7){S.plaque=true;save();auArp(329.63);
+    openCard(`<div class="sub">단서 3 / 3</div><h2>빛이 글씨를 깨웠어요</h2><div class="plaque">LE PENSEUR<br><span style="font-size:13px;letter-spacing:.3em">생각하는 사람</span><div class="y">1880</div></div>
+    <p>빛을 옆에서 비추자 튀어나온 글자에 그림자가 생겨 읽을 수 있게 되었어요. 명판에 새겨진 <b>해</b>를 기억하세요.</p>
+    <p>조각도 마찬가지예요. 조명을 돌려 조각을 다시 보세요. 빛의 방향에 따라 근육과 얼굴의 표정이 완전히 달라져요. 로댕은 작품이 놓일 곳과 빛을 늘 고민했어요.</p>`,[['조각 다시 보기',()=>{closeModal();setView('main')}]]);renderHUD()}}else rakeHold=0}
+
+/* ================= EXIT ================= */
+function allDone(){return S.doneA&&S.doneB&&S.plaque}
+function tapDoor(){if(cam.focus!=='door'){setView('door');setTimeout(()=>{if(!modalOpen)tapDoor()},850);return}
+  if(!allDone()){toast('자물쇠에 숫자가 세 칸 있어요. 먼저 단서 세 개를 모두 찾으세요.');auBuzz();return}lockCard()}
+function lockCard(){const labels=['로댕이 말한, 생각하는 몸의 부분','지옥의 문 꼭대기에 선 망령','명판에 새겨진 해'];const vals=S.lockVals||[0,0,0];
+  const card=openCard(`<div class="sub">출구</div><h2>세 칸 숫자 자물쇠</h2><p>이 방에서 찾은 숫자 세 개를 맞추세요.</p>
+   <div class="lock" id="lock">${labels.map((l,i)=>`<div class="dial${i===2?' wide':''}"><label for="d${i}">${l}</label><div class="ctl"><button type="button" data-d="${i}" data-s="-1" aria-label="${l} 줄이기">−</button><input id="d${i}" inputmode="numeric" maxlength="${i===2?4:2}" value="${vals[i]}"><button type="button" data-d="${i}" data-s="1" aria-label="${l} 늘리기">+</button></div></div>`).join('')}</div>
+   <p id="lfb" class="note" aria-live="polite"></p>`,[['닫고 다시 찾기',closeModal,'ghost'],['자물쇠 열기',tryLock]]);
+  const read=()=>[0,1,2].map(i=>clamp(parseInt(card.querySelector('#d'+i).value,10)||0,0,i===2?9999:99));
+  card.querySelectorAll('.dial button').forEach(b=>b.onclick=()=>{const i=+b.dataset.d;const inp=card.querySelector('#d'+i);inp.value=clamp((parseInt(inp.value,10)||0)+(+b.dataset.s),0,i===2?9999:99);S.lockVals=read();auChime(1200,.04)});
+  card.querySelectorAll('.dial input').forEach((inp,i)=>inp.oninput=()=>{inp.value=inp.value.replace(/\D/g,'').slice(0,i===2?4:2);S.lockVals=read()});
+  function tryLock(){const v=read();S.lockVals=v;save();if(v.every((x,i)=>x===ANSWER[i])){closeModal();escapeRoom()}else{const lk=card.querySelector('#lock');lk.classList.remove('shake');void lk.offsetWidth;lk.classList.add('shake');
+    const right=v.filter((x,i)=>x===ANSWER[i]).length;card.querySelector('#lfb').textContent=`철컥, 열리지 않아요. 맞은 숫자는 ${right}개예요. 위쪽 단서 버튼으로 다시 살펴볼 수 있어요.`;auBuzz()}}}
+const TIMELINE=[[1840,'파리에서 오귀스트 로댕이 태어나요.'],[1880,'「지옥의 문」을 주문받고, 문 위에 앉을 「시인」을 구상해요.'],[1904,'크게 확대한 「생각하는 사람」을 세상에 선보여요.'],[1906,'파리 팡테옹 앞에 청동 「생각하는 사람」이 세워져요.'],[1917,'로댕이 세상을 떠나요. 뫼동의 무덤 위에도 생각하는 사람이 앉아 있어요.']];
+function escapeRoom(){S.escaped=true;save();auArp(261.63);setTimeout(()=>auArp(392),650);exitG.userData.led.material.color.set('#3bff8a');
+  fade(()=>{setView('main');cam.goal.el=.22;cam.auto=true;S.lightAz=-62;$('lightRange').value=-62;placeKey(-62);aimBeam();renderHUD();
+    setTimeout(()=>openCard(`<div class="sub">탈출 성공</div><h2>${esc(S.team||'우리')} 모둠, 전시실 문이 열렸어요!</h2>
+     <dl class="fact"><dt>걸린 시간</dt><dd>${fmt(S.elapsed)}</dd><dt>힌트</dt><dd>${S.hints}번</dd><dt>자물쇠</dt><dd>몸의 부분 8 · 망령 3 · 1880</dd></dl>
+     <p><b>생각하는 사람의 진짜 이름은 '시인'</b> · 지옥의 문 위에서 지옥을 내려다보던 단테가 홀로 세상에 나와, 모든 사람의 '생각'을 상징하게 되었어요.</p>
+     <ol class="timeline">${TIMELINE.map(([y,t])=>`<li><b>${y}</b><span>${esc(t)}</span></li>`).join('')}</ol>
+     <p class="note">이 화면을 선생님께 보여 주세요. 활동지에 '생각하는 사람은 무엇을 생각하고 있을까?'에 대한 모둠의 답을 적어 보세요.</p>`,[['처음부터 다시',()=>{try{localStorage.removeItem(KEY)}catch(e){}location.reload()},'ghost'],['조각 감상하기',()=>{closeModal();setLightOpen(true)}]]),900)})}
+
+/* ================= cards ================= */
+let modalOpen=false;
+function openCard(html,buttons,cls){const card=$('card');card.className='card '+(cls||'');card.innerHTML=html+(buttons&&buttons.length?'<div class="btnRow">'+buttons.map((b,i)=>`<button class="btn small ${b[2]||''}" type="button" data-i="${i}">${b[0]}</button>`).join('')+'</div>':'');
+  card.querySelectorAll('.btnRow button').forEach(el=>el.onclick=()=>buttons[+el.dataset.i][1]());$('modal').hidden=false;modalOpen=true;const f=card.querySelector('.btnRow button:last-child')||card.querySelector('button');f&&f.focus({preventScroll:true});return card}
+function closeModal(){$('modal').hidden=true;modalOpen=false;setTimeout(progressCheck,250)}
+// whatever way a card was closed (button, Esc), make sure finished clues are registered
+function progressCheck(){if(modalOpen||!S.started||S.escaped)return;if(S.found.length>=8&&!S.doneA){doneA();return}checkB()}
+const QUOTE=`"나의 생각하는 사람이 생각하는 것은 뇌만이 아니다. <mark>찌푸린 이마</mark>, <mark>벌름거리는 콧구멍</mark>, <mark>꽉 다문 입술</mark>, 그리고 <mark>팔</mark>과 <mark>등</mark>과 <mark>다리</mark>의 모든 근육, <mark>움켜쥔 주먹</mark>과 <mark>오므린 발가락</mark>으로도 생각하기 때문이다."`;
+function quoteCard(after){openCard(`<div class="sub">로댕의 말</div><div class="hand">${QUOTE}<br><br>— 오귀스트 로댕</div><div class="src">로댕이 이 조각에 대해 한 말을 쉽게 옮겼어요. 밑줄 친 부분을 조각에서 찾아 눌러 보세요.</div>`,[['조각 살펴보기',()=>{closeModal();after&&after()}]],'paper');auChime(660,.08)}
+function introCard(){openCard(`<div class="sub">밤 9시 · 로댕 전시실</div><h2>문이 잠겼어요</h2>
+  <p>출구 옆 자물쇠에는 숫자 세 칸이 있어요. 이 방 안에 숨은 단서 세 개를 찾으세요.</p>
+  <ol><li><b>온몸으로 생각하기</b> · 로댕이 말한 몸의 부분을 조각에서 찾아 누르세요.</li><li><b>지옥의 문</b> · 조각 뒤쪽 벽의 거대한 청동 문을 살펴보세요.</li><li><b>빛으로 읽기</b> · 받침대 앞 명판의 글씨를 읽어 내세요.</li></ol>
+  <p class="note">화면을 끌면 조각 주위를 돌고, 두 손가락이나 휠로 가까이 다가가요.</p>`,[['로댕의 말 읽기',()=>quoteCard()]])}
+
+/* ================= HUD ================= */
+let toastT=0;
+function toast(msg){const t=$('toast');t.textContent=msg;t.classList.remove('off');clearTimeout(toastT);toastT=setTimeout(()=>t.classList.add('off'),3200)}
+const fmt=s=>{s=Math.floor(s);return String(Math.floor(s/60)).padStart(2,'0')+':'+String(s%60).padStart(2,'0')};
+function guideHTML(){
+  if(S.escaped)return '조명을 돌려 가며 조각을 감상해 보세요. 빛에 따라 표정이 달라져요.';
+  if(cam.focus==='gates')return S.doneB?'꼭대기의 망령 수를 기억했나요? <b>전체 보기</b>로 조각에게 돌아가세요.':'문 위 가운데의 작은 인물과, 맨 꼭대기의 인물들을 눌러 보세요.';
+  if(cam.focus==='plaque')return S.plaque?'명판의 해를 기억하세요. 조명을 돌리며 조각의 표정이 어떻게 바뀌는지도 보세요.':'아래 <b>조명 방향</b>을 돌려 명판의 글씨가 보이게 하세요.';
+  if(cam.focus==='door')return allDone()?'자물쇠를 눌러 세 숫자를 맞추세요.':'단서 세 개를 모두 찾으면 자물쇠를 열 수 있어요.';
+  if(allDone())return '단서를 모두 찾았어요! <b>출구로 가기</b>를 눌러 자물쇠를 여세요.';
+  const chips=`<div class="parts">${PARTS.map(([id,n])=>`<span class="part${S.found.includes(id)?' on':''}">${n}</span>`).join('')}</div>`;
+  if(!S.doneA)return `조각을 돌려 보며 로댕이 말한 부분을 눌러 찾으세요 · <b>${S.found.length} / 8</b>${chips}`;
+  if(!S.doneB)return '조각 뒤쪽 벽의 <b>지옥의 문</b>을 눌러 살펴보세요.';
+  return '받침대 앞의 <b>명판</b>을 눌러 보세요.'}
+function renderGuide(){if(S.started)$('guide').innerHTML=guideHTML()}
+function renderHUD(){const playing=S.started;['hudTL','hudTR','hudB'].forEach(id=>$(id).hidden=!playing);if(!playing)return;
+  $('hudTL').querySelector('.roomNo').textContent=S.escaped?'탈출 성공 · 감상 모드':'밤의 전시실 · 단서 3개';
+  const T=[['main',`1 온몸 ${S.found.length}/8`,S.doneA],['gates','2 지옥의 문',S.doneB],['plaque','3 명판',S.plaque]];
+  $('tabs').innerHTML=T.map(([v,l,d])=>`<button class="tab${d?' done':''}" type="button" data-v="${v}" aria-current="${cam.focus===v}">${l}</button>`).join('');
+  $('tabs').querySelectorAll('button').forEach(b=>b.onclick=()=>{if(modalOpen)return;const v=b.dataset.v;cam.auto=false;if(v==='gates')tapGates();else if(v==='plaque')tapPlaque();else setView('main')});
+  $('hintBtn').textContent=S.hints?`힌트 · ${S.hints}`:'힌트';$('hintBtn').hidden=S.escaped;$('timer').hidden=S.escaped;
+  const nx=$('nextBtn');nx.hidden=!(allDone()&&!S.escaped&&cam.focus!=='door');
+  $('lightPanel').hidden=!lightOpen;renderGuide()}
+$('nextBtn').onclick=()=>{cam.auto=false;tapDoor()};
+$('viewBtn').onclick=()=>{cam.auto=false;setView('main')};
+$('lightBtn').onclick=()=>setLightOpen(!lightOpen);
+$('hintBtn').onclick=()=>{if(!modalOpen)hintCard()};
+$('soundBtn').onclick=()=>{AU.on=!AU.on;auInit();if(AU.master)AU.master.gain.setTargetAtTime(AU.on?.9:0,AU.ctx.currentTime,.2);$('soundBtn').textContent=AU.on?'소리 켬':'소리 끔';$('soundBtn').setAttribute('aria-pressed',String(AU.on))};
+function lightLabel(d){const a=Math.abs(d);if(a<20)return '정면';const side=d>0?'오른쪽':'왼쪽';if(a<60)return side+' 앞';if(a<110)return side+' 옆';if(a<160)return side+' 뒤';return '뒤'}
+$('lightRange').addEventListener('input',e=>{S.lightAz=+e.target.value;placeKey(S.lightAz);aimBeam();$('lightDeg').textContent=lightLabel(S.lightAz)});
+const HINTS=[
+ ['조각을 끌어서 빙 돌려 보세요. 등은 뒤쪽에서만 보여요.','얼굴을 누르면 가까이 다가가요. 가까이에서 이마, 코, 입을 하나씩 눌러 보세요.','주먹은 턱 밑의 오른손, 발가락은 바위 위 발끝에 있어요. 팔과 다리는 아무 쪽이나 괜찮아요. 모두 8곳이에요.'],
+ ['조각 뒤쪽 벽의 커다란 청동 문을 누르면 가까이 갈 수 있어요.','문 위 가운데 튀어나온 턱 위에 작은 인물이 앉아 있어요. 누군가와 꼭 닮았죠?','맨 꼭대기 처마 위에 선 인물들도 눌러 보세요. 같은 조각이 몇 번 나오는지 세어 보세요.'],
+ ['받침대 앞의 네모난 청동 명판을 누르면 조명 손잡이가 나타나요.','빛을 정면에서 비추면 글자에 그림자가 생기지 않아요. 옆에서 비춰 보세요.','조명 방향을 왼쪽 옆이나 오른쪽 옆(약 70~90도)으로 돌려 보세요. 명판에 새겨진 해가 네 자리 숫자예요.'],
+ ['자물쇠는 몸의 부분 수, 꼭대기의 망령 수, 명판의 해 순서예요.']];
+function hintCard(){const order=[[0,!S.doneA],[1,!S.doneB],[2,!S.plaque]].filter(x=>x[1]).map(x=>x[0]);if(!order.length)order.push(3);
+  const NAMES=['온몸으로 생각하기','지옥의 문','빛으로 읽기','자물쇠'];const r=order[0];const shown=S.hintIdx[r];
+  const list=HINTS[r].slice(0,shown).map((h,i)=>`<div><b>힌트 ${i+1}</b> · ${esc(h)}</div>`).join('')||'<div>아직 본 힌트가 없어요.</div>';
+  const btns=[['닫기',closeModal,'ghost']];if(r===0)btns.unshift(['로댕의 말 다시 읽기',()=>quoteCard(),'ghost']);if(shown<HINTS[r].length)btns.push([shown?'다음 힌트 보기':'힌트 보기',()=>{S.hintIdx[r]++;S.hints++;save();renderHUD();hintCard()}]);
+  openCard(`<div class="sub">힌트 · 지금 찾을 단서</div><h2>${NAMES[r]}</h2><div class="hints">${list}</div><p class="note">힌트를 볼 때마다 기록에 남아요. 지금까지 ${S.hints}번.</p>`,btns)}
+function fade(mid){const f=$('fade');f.classList.add('on');setTimeout(()=>{mid();requestAnimationFrame(()=>setTimeout(()=>f.classList.remove('on'),60))},620)}
+
+/* ================= input ================= */
+const cv=$('gl');const ptrs=new Map();let down=null,pinch=null,lastMove=0;const ray=new THREE.Raycaster(),ndc=new THREE.Vector2();
+const pd=()=>{const a=[...ptrs.values()];return Math.hypot(a[0].x-a[1].x,a[0].y-a[1].y)};
+cv.addEventListener('pointerdown',e=>{if(modalOpen)return;try{cv.setPointerCapture(e.pointerId)}catch(_){}ptrs.set(e.pointerId,{x:e.clientX,y:e.clientY});
+  if(ptrs.size===1){down={x:e.clientX,y:e.clientY,t:performance.now(),moved:0};cam.drag=true;cam.vaz=cam.vel=0;cv.classList.add('drag')}else if(ptrs.size===2){pinch={d:pd(),gd:cam.goal.d};down=null}});
+cv.addEventListener('pointermove',e=>{const p=ptrs.get(e.pointerId);if(!p){hover(e);return}const dx=e.clientX-p.x,dy=e.clientY-p.y;p.x=e.clientX;p.y=e.clientY;
+  if(ptrs.size===1&&S.started){cam.auto=false;const k=2.6/innerHeight;cam.goal.az-=dx*k;cam.goal.el+=dy*k;const now=performance.now(),dtm=Math.max(8,now-lastMove)/1000;lastMove=now;cam.vaz=cam.vaz*.6-dx*k/dtm*.4;cam.vel=cam.vel*.6+dy*k/dtm*.4;if(down)down.moved+=Math.abs(dx)+Math.abs(dy)}
+  else if(ptrs.size===2&&pinch){cam.goal.d=pinch.gd*pinch.d/pd()}});
+function up(e){if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);if(ptrs.size<2)pinch=null;
+  if(ptrs.size===0){cam.drag=false;cv.classList.remove('drag');if(performance.now()-lastMove>90){cam.vaz=cam.vel=0}
+    if(down&&down.moved<10&&performance.now()-down.t<600&&e.type==='pointerup')tap(e.clientX,e.clientY);down=null}}
+cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
+cv.addEventListener('wheel',e=>{e.preventDefault();if(!S.started)return;cam.auto=false;cam.goal.d=cam.goal.d*Math.exp(e.deltaY*.0012)},{passive:false});
+function castAt(x,y){ndc.set(x/innerWidth*2-1,-(y/innerHeight)*2+1);ray.setFromCamera(ndc,camera);const h=ray.intersectObjects(hits,false);return h.length?h[0]:null}
+function tap(x,y){if(!S.started||modalOpen)return;cam.auto=false;const h=castAt(x,y);if(!h)return;const t=h.object.userData.type;
+  if(S.escaped&&t!=='statue')return;
+  if(t==='statue')tapStatue(h);
+  else if(t==='rock'){const g=regionAt(h.point);if(g&&g.part==='toes'){tapStatue(h);return}pulseAt(h.point,0x9fb4ff);toast('거친 바위예요. 인물과 바위가 한 덩어리의 청동으로 부어져 만들어졌어요.')}
+  else if(t==='gates'||t==='poet'||t==='shades')tapGates(t);
+  else if(t==='plaque')tapPlaque();
+  else if(t==='pedestal')toast('검은 화강암 받침대예요. 앞면의 청동 명판을 눌러 보세요.');
+  else if(t==='door')tapDoor()}
+let hovT=0;function hover(e){if(!S.started||touch||modalOpen)return;const now=performance.now();if(now-hovT<120)return;hovT=now;
+  ndc.set(e.clientX/innerWidth*2-1,-(e.clientY/innerHeight)*2+1);ray.setFromCamera(ndc,camera);const hs=ray.intersectObjects(hits.filter(o=>o!==thinkerMesh).concat(hoverProxy?[hoverProxy]:[]),false);const h=hs[0];cv.style.cursor=h&&h.object.userData.type!=='pedestal'?'pointer':''}
+addEventListener('keydown',e=>{if(e.key==='Escape'&&modalOpen){closeModal();return}if(modalOpen||!S.started)return;const s=.08;
+  if(e.key==='ArrowLeft')cam.goal.az-=s*2;else if(e.key==='ArrowRight')cam.goal.az+=s*2;else if(e.key==='ArrowUp')cam.goal.el+=s;else if(e.key==='ArrowDown')cam.goal.el-=s;else if(e.key==='+'||e.key==='=')cam.goal.d*=.9;else if(e.key==='-')cam.goal.d*=1.1;else return;cam.auto=false});
+
+/* ================= start / resume ================= */
+let ready=false;
+function begin(resume){auInit();auPad(PAD);const st=$('start');st.style.transition='opacity .8s';st.style.opacity='0';setTimeout(()=>st.hidden=true,800);
+  if(!resume){const team=$('team').value.trim();S=freshState();S.team=team}
+  S.started=true;save();cam.auto=false;startOffset=false;resize();$('lightRange').value=S.lightAz;placeKey(S.lightAz);aimBeam();$('lightDeg').textContent=lightLabel(S.lightAz);
+  setView('main');renderHUD();if(!resume)setTimeout(introCard,700);else setTimeout(progressCheck,900)}
+$('startBtn').onclick=()=>{if(ready)begin(false)};
+$('team').addEventListener('keydown',e=>{if(e.key==='Enter'&&ready)begin(false)});
+$('resumeBtn').onclick=()=>{const s=loadSaved();if(s&&ready){S=Object.assign(freshState(),s);$('team').value=S.team;begin(true)}};
+if(loadSaved())$('resumeBtn').hidden=false;
+
+sculptAll(p=>{$('castBar').style.width=(p*100).toFixed(1)+'%';$('startBtn').textContent=`조각을 주조하는 중… ${Math.round(p*100)}%`}).then(res=>{
+  addStatue(res);ready=true;$('startBtn').disabled=false;$('startBtn').textContent='탈출 시작';$('castBar').parentElement.style.visibility='hidden';if(DEBUG)window.__ready=true});
+
+/* ================= loop ================= */
+let last=performance.now(),timerShown=-1,paused=false;
+function tick(now,dt){const t=now/1000;
+  updateCam(dt);updateCast(dt);updatePlaque(dt);for(const f of anim)f(t,dt);runTweens(now);
+  beamMat.uniforms.uOp.value=.045+.01*Math.sin(t*.7);
+  if(S.started&&!S.escaped&&!document.hidden){S.elapsed+=dt;const s=Math.floor(S.elapsed);if(s!==timerShown){timerShown=s;$('timer').textContent=fmt(s);if(s%10===0)save()}}
+}
+function frame(now){const dt=Math.min(.05,(now-last)/1000);last=now;if(!paused){tick(now,dt);renderer.render(scene,camera)}requestAnimationFrame(frame)}
+requestAnimationFrame(frame);
+/* test hooks (only with ?debug) */
+if(DEBUG)window.__game={pause:v=>{paused=v},step:(sec)=>{let n=performance.now();for(let i=0;i<sec*30;i++){n+=33;tick(n,1/30)}renderer.render(scene,camera)},S:()=>S,setView,tapPlaque,tapGates,tapDoor,cam,closeModal,regionAt,lm,setLight:d=>{S.lightAz=d;$('lightRange').value=d;placeKey(d);aimBeam()},faceView,camera,castAt,tap};
+</script>
+</body>
+</html>
