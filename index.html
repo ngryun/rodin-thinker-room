@@ -215,10 +215,10 @@ function fbm(x,y,z,o){let s=0,a=.5;for(let i=0;i<o;i++){s+=a*vnoise(x,y,z);x=x*2
 
 /* ---------- primitives ---------- */
 /* t:0 roundcone, 1 ellipsoid, 2 sphere, 3 rounded box, 4 hair ellipsoid (noisy) */
-function P_cone(a,b,r1,r2,k){const ba=sub(b,a),l2=dot(ba,ba),rr=r1-r2;return {t:0,a,ba,l2,rr,a2:l2-rr*rr,il2:1/l2,r1,r2,k:k==null?.02:k,bc:lerp(a,b,.5),br:Math.sqrt(l2)/2+Math.max(r1,r2)}}
-function P_ell(c,ax,ay,az,rx,ry,rz,k){return {t:1,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),rx,ry,rz,k:k==null?.02:k,bc:c,br:Math.max(rx,ry,rz)}}
-function P_sph(c,r,k){return {t:2,c,r,k:k==null?.02:k,bc:c,br:r}}
-function P_box(c,ax,ay,az,hx,hy,hz,r,k){return {t:3,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),hx,hy,hz,r,k:k==null?.02:k,bc:c,br:Math.hypot(hx,hy,hz)+r}}
+function P_cone(a,b,r1,r2,k){const ba=sub(b,a),l2=dot(ba,ba),rr=r1-r2;return {t:0,a,ba,l2,rr,a2:l2-rr*rr,il2:1/l2,r1,r2,k:k==null?.02:k,post:0,bc:lerp(a,b,.5),br:Math.sqrt(l2)/2+Math.max(r1,r2)}}
+function P_ell(c,ax,ay,az,rx,ry,rz,k){return {t:1,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),rx,ry,rz,k:k==null?.02:k,post:0,bc:c,br:Math.max(rx,ry,rz)}}
+function P_sph(c,r,k){return {t:2,c,r,k:k==null?.02:k,post:0,bc:c,br:r}}
+function P_box(c,ax,ay,az,hx,hy,hz,r,k){return {t:3,c,ax:nrm(ax),ay:nrm(ay),az:nrm(az),hx,hy,hz,r,k:k==null?.02:k,post:0,bc:c,br:Math.hypot(hx,hy,hz)+r}}
 function evalP(P,x,y,z){
   switch(P.t){
   case 0:{const pax=x-P.a[0],pay=y-P.a[1],paz=z-P.a[2],ba=P.ba,l2=P.l2;const yy=pax*ba[0]+pay*ba[1]+paz*ba[2],zz=yy-l2;
@@ -237,16 +237,19 @@ function evalP(P,x,y,z){
 function smin(a,b,k){if(k<=0)return Math.min(a,b);const h=Math.max(k-Math.abs(a-b),0)/k;return Math.min(a,b)-h*h*k*.25}
 function smax(a,b,k){return -smin(-a,-b,k)}
 
-/* evaluate a "model": {add:[prims], cut:[prims], disp:fn|null} restricted to lists */
-function evalList(M,adds,cuts,x,y,z){let d=1e9;for(let i=0;i<adds.length;i++){const P=adds[i];d=smin(d,evalP(P,x,y,z),P.k)}
+/* evaluate a "model": {add:[prims], cut:[prims], disp:fn|null} restricted to lists.
+   Prims flagged .post (eyeballs, lids) are joined after the cuts so a carved socket doesn't hollow them out. */
+function evalList(M,adds,cuts,x,y,z){let d=1e9,dp=1e9;for(let i=0;i<adds.length;i++){const P=adds[i];if(P.post)dp=smin(dp,evalP(P,x,y,z),P.k);else d=smin(d,evalP(P,x,y,z),P.k)}
   for(let i=0;i<cuts.length;i++){const P=cuts[i];d=smax(d,-evalP(P,x,y,z),P.k)}
+  if(dp<1e9)d=smin(d,dp,.004);
   if(M.disp)d+=M.disp(x,y,z,d);return d}
 
 /* ======================================================================
    THE THINKER (Le Penseur) — anatomy built in metres, figure faces +z,
    +x is the figure's LEFT. Right elbow rests on the LEFT thigh.
    ====================================================================== */
-function thinker(){
+function thinker(h){
+  const fine=!(h>.008);   // the small copy on the Gates is meshed coarsely: skip details it could never show
   const A=[],C=[];const add_=p=>{A.push(p);return p};const cut=p=>{C.push(p);return p};
   const UP=V(0,1,0);
   /* ---- skeleton ---- */
@@ -254,10 +257,12 @@ function thinker(){
     pelvis:V(0,.64,-.09),hipR:V(-.105,.60,-.05),hipL:V(.105,.61,-.05),
     kneeR:V(-.205,.585,.40),kneeL:V(.15,.605,.405),
     ankR:V(-.235,.115,.30),ankL:V(.19,.14,.455),
-    L3:V(0,.76,-.075),T12:V(.012,.87,-.005),T6:V(.03,.98,.07),C7:V(.042,1.02,.195),
-    shR:V(-.185,.94,.23),shL:V(.215,.985,.05),
-    elR:V(.10,.72,.27),elL:V(.335,.72,.165),
-    wrR:V(.05,.94,.40),wrL:V(.195,.705,.405),
+    // the trunk is long and fairly upright; it hunches only at the top, so the shoulders rise
+    // almost to the crown and the head hangs forward in front of them (as in the bronze seen from the side)
+    L3:V(.005,.79,-.08),T12:V(.025,.94,-.045),T6:V(.05,1.08,.02),C7:V(.07,1.19,.11),
+    shR:V(-.12,1.10,.22),shL:V(.26,1.15,.02),
+    elR:V(.10,.77,.29),elL:V(.31,.80,.15),
+    wrR:V(.05,.965,.42),wrL:V(.195,.705,.405),
   };
   /* ---- head frame: bowed ~38deg, slight yaw to his left & tilt ---- */
   const pitch=.66,yaw=.12,roll=-.06;
@@ -280,13 +285,13 @@ function thinker(){
 
   /* ===== TORSO ===== */
   // chest frame: yawed to the left, pitched forward
-  const chestC=V(.03,.915,.1);
+  const chestC=madd(lerp(J.T12,J.C7,.5),UP,-.03);
   let cUp=nrm(sub(J.C7,J.L3)),cRt=nrm(sub(J.shL,J.shR));cRt=nrm(sub(cRt,mul(cUp,dot(cRt,cUp))));const cFw=nrm(cross(cRt,cUp));
   const T={o:chestC,x:cRt,y:cUp,z:cFw,p(a,b,c){return madd(chestC,cRt,a,cUp,b,cFw,c)}};
   // ribcage
-  add_(P_ell(T.p(0,0,-.015),cRt,cUp,cFw,.2,.2,.15,.045));
+  add_(P_ell(T.p(0,0,-.015),cRt,cUp,cFw,.21,.22,.165,.045));
   // abdomen frame (less twisted)
-  const abC=V(.012,.775,.035);let aUp=nrm(sub(J.T12,J.pelvis));let aRt=nrm(lerp(V(1,0,0),cRt,.45));aRt=nrm(sub(aRt,mul(aUp,dot(aRt,aUp))));const aFw=nrm(cross(aRt,aUp));
+  const abC=add(lerp(J.L3,J.T12,.5),V(.006,-.04,.075));let aUp=nrm(sub(J.T12,J.pelvis));let aRt=nrm(lerp(V(1,0,0),cRt,.45));aRt=nrm(sub(aRt,mul(aUp,dot(aRt,aUp))));const aFw=nrm(cross(aRt,aUp));
   const Ab={p(a,b,c){return madd(abC,aRt,a,aUp,b,aFw,c)}};
   add_(P_ell(Ab.p(0,.0,-.01),aRt,aUp,aFw,.15,.13,.12,.06));
   // pelvis & glutes
@@ -307,31 +312,48 @@ function thinker(){
   // serratus digitations on the left side (visible because torso twists)
   for(let i=0;i<3;i++)add_(P_ell(T.p(.14,.03-i*.045,.065),cRt,cUp,cFw,.018,.016,.025,.02));
   // back: one broad rounded shell first, then muscles laid on it with wide blends
-  add_(P_ell(T.p(0,.0,-.06),cRt,cUp,cFw,.19,.23,.12,.12));                 // the arched back as a single mass
-  add_(P_ell(Ab.p(0,.05,-.05),aRt,aUp,aFw,.145,.16,.085,.12));                // lower back: fills the waist so it doesn't step in
+  add_(P_ell(T.p(0,.0,-.06),cRt,cUp,cFw,.2,.25,.135,.12));                 // the arched back as a single mass
+  add_(P_ell(Ab.p(0,.07,-.05),aRt,aUp,aFw,.15,.19,.105,.12));                 // lower back: fills the waist so it doesn't step in
+  add_(P_ell(V(-.005,.775,-.125),V(1,0,0),UP,V(0,0,1),.13,.1,.085,.1));       // sacrum / loins: the back flows into the seat without a crease
   // erector spinae: thick only at the lumbar, fading up into the back
   {const dir=nrm(sub(J.T12,J.L3)),side=nrm(cross(dir,cFw));
     for(const s of [-1,1])add_(P_ell(madd(lerp(J.L3,J.T12,.55),side,s*.045,cFw,-.075),dir,side,cross(dir,side),.14,.036,.03,.07));
     }
   for(const s of [-1,1]){const sh=s<0?J.shR:J.shL;
-    // scapula: broad flat plate
-    add_(P_ell(T.p(s*.1,.07,-.1),cRt,cUp,cFw,.085,.09,.02,.09));
     // latissimus: wide sheet from lower back to armpit
     add_(P_ell(lerp(T.p(s*.13,-.04,-.07),sh,.25),nrm(sub(sh,T.p(s*.05,-.12,-.09))),cRt,cFw,.18,.07,.04,.11));
     // trapezius: slopes from the neck down to the shoulder, never above it
     {const a0=madd(J.C7,cFw,-.035,cUp,.01),a1=madd(sh,cUp,-.005,cFw,-.03);const ax=nrm(sub(a1,a0));const nn=nrm(sub(cUp,mul(ax,dot(cUp,ax))));
       add_(P_ell(lerp(a0,a1,.45),ax,nn,cross(ax,nn),len(sub(a1,a0))*.55,.035,.06,.08))}
     // deltoid
-    const dc=madd(sh,cUp,.01,cRt,s*.022);add_(P_ell(dc,cRt,cUp,cFw,.076,.082,.08,.045));
+    const dc=madd(sh,cUp,.006,cRt,s*.018);add_(P_ell(dc,cRt,cUp,cFw,.066,.07,.07,.045));
     // teres / infraspinatus rounding the shoulder from behind
     add_(P_ell(T.p(s*.15,.07,-.05),cRt,cUp,cFw,.04,.045,.028,.08));
   }
-  // thoracic paraspinals: low ridges that leave a soft valley over the spine
-  for(const s of [-1,1])add_(P_ell(T.p(s*.038,-.01,-.165),cRt,cUp,cFw,.03,.15,.022,.06));
   // flanks: keep the waist full from behind
   for(const s of [-1,1])add_(P_ell(Ab.p(s*.13,.07,.0),aRt,aUp,aFw,.05,.11,.06,.08));
   // middle trapezius between the shoulder blades
   add_(P_ell(T.p(0,.1,-.1),cRt,cUp,cFw,.1,.075,.035,.07));
+  // upper trapezius: a thick slope from the base of the skull down over the neck to each shoulder,
+  // so from behind the bowed head almost sinks between the shoulders
+  for(const s of [-1,1]){const sh=s<0?J.shR:J.shL;add_(P_cone(H.p(s*.03,-.045,-.055),madd(J.C7,cFw,-.035,cRt,s*.06,cUp,.01),.03,.05,.05));
+    add_(P_cone(madd(J.C7,cFw,-.035,cRt,s*.06,cUp,.01),madd(sh,cFw,-.035,cUp,.02,cRt,-s*.03),.05,.045,.05))}
+
+  /* Details laid onto the back surface built so far: find where a ray from inside the trunk leaves it */
+  const surf=(o,d)=>{const f=p=>{let v=1e9;for(const P of A)v=smin(v,evalP(P,p[0],p[1],p[2]),P.k);return v};
+    let a=0,b=.02;while(f(madd(o,d,b))<0&&b<.6){a=b;b+=.02}for(let i=0;i<14;i++){const m=(a+b)/2;if(f(madd(o,d,m))<0)a=m;else b=m}return madd(o,d,(a+b)/2)};
+  {// spine: a furrow down the middle of the back between the erector columns; deepest at the waist, shallow between the shoulder blades
+    const pts=[];for(let i=0;i<8;i++){const t=.04+i*.12;const bk=nrm(lerp(mul(aFw,-1),mul(cFw,-1),Math.min(1,t*1.4)));const rt=nrm(lerp(aRt,cRt,Math.min(1,t*1.4)));
+      pts.push({t,bk,rt,s:surf(lerp(J.L3,J.C7,t),bk)})}
+    for(let i=0;i<pts.length-1;i++){const p=pts[i],q=pts[i+1];const ax=nrm(sub(q.s,p.s)),m=lerp(p.s,q.s,.5),bk=nrm(lerp(p.bk,q.bk,.5)),rt=nrm(cross(bk,ax));
+      const w=1-p.t;                                        // 1 at the waist, fading up the back
+      for(const s of [-1,1])add_(P_ell(madd(m,rt,s*(.036+.008*w),bk,-.016+.006*w),ax,rt,bk,len(sub(q.s,p.s))*.8,.024+.014*w,.016+.012*w,.045));
+      cut(P_ell(madd(m,bk,.008),ax,rt,bk,len(sub(q.s,p.s))*.8,.012+.01*w,.005+.013*w,.03))}}
+  for(const s of [-1,1]){// shoulder blades: a flat plate with a raised inner border and the infraspinatus swelling below the spine of the blade
+    const sp=surf(T.p(s*.1,.03,-.02),mul(cFw,-1));const tilt=rot(cUp,cFw,-s*.25);const rt=nrm(cross(tilt,cFw));
+    add_(P_ell(madd(sp,cFw,.016),rt,tilt,cFw,.07,.09,.022,.06));
+    add_(P_cone(madd(sp,rt,-s*.05,tilt,.06,cFw,.008),madd(sp,rt,-s*.036,tilt,-.07,cFw,.006),.009,.008,.03));
+    add_(P_ell(madd(sp,rt,s*.025,tilt,-.03,cFw,.012),rt,tilt,cFw,.05,.04,.018,.05))}
   // clavicles
   for(const s of [-1,1]){const sh=s<0?J.shR:J.shL;add_(P_cone(T.p(s*.02,.155,.06),madd(sh,cFw,.03,cUp,.02),.016,.018,.02))}
 
@@ -351,24 +373,26 @@ function thinker(){
   add_(P_ell(hp(0,-.02,-.05),hRt,hUp,hFw,.075,.07,.07,.03));
   // hair: noisy cap
   add_(P_ell(hp(0,.02,-.016),hRt,hUp,hFw,.09,.097,.104,.015));
-  // hair: short rough locks modelled one by one (golden-spiral over the scalp)
-  {const N=230,ga=Math.PI*(3-Math.sqrt(5));let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
+  // hair: short rough curls modelled one by one (golden-spiral over the scalp)
+  if(fine){const N=290,ga=Math.PI*(3-Math.sqrt(5));let seed=7;const rnd=()=>{seed=(seed*16807)%2147483647;return seed/2147483647};
     for(let i=0;i<N;i++){const yy=1-2*(i+.5)/N,rr=Math.sqrt(1-yy*yy),th=i*ga;const dx=Math.cos(th)*rr,dz=Math.sin(th)*rr,dy=yy;
       // local direction on the cranium: (dx,dy,dz) in (x,up,fwd)
       const front=dz>.35&&dy<.5;if(dy<-.05&&dz>-.6)continue;if(front&&dy<.3)continue;if(Math.abs(dx)>.75&&dy<.25&&dz>-.5)continue;
       const fo=dz>.3?.012*dz:0;const lp=[dx*(.094+fo),.02+dy*.1,-.016+dz*(.108+fo)];const c=hp(lp[0],lp[1],lp[2]);const n=nrm(madd([0,0,0],hRt,dx/.094,hUp,dy/.1,hFw,dz/.108));
-      const sweep=nrm(madd([0,0,0],hFw,-1,hUp,-.6,hRt,(rnd()-.5)*1.4));let t=nrm(sub(sweep,mul(n,dot(sweep,n))));t=rot(t,n,(rnd()-.5)*1.2);const b=cross(n,t);const r=.008+rnd()*.007;
-      add_(P_ell(madd(c,n,-.003+rnd()*.003),t,b,n,r*(1.7+rnd()*.8),r,r*.55,.009))}}
+      const sweep=nrm(madd([0,0,0],hFw,-1,hUp,-.6,hRt,(rnd()-.5)*1.4));let t=nrm(sub(sweep,mul(n,dot(sweep,n))));t=rot(t,n,(rnd()-.5)*1.2);const b=cross(n,t);const r=.0085+rnd()*.0065;
+      add_(P_ell(madd(c,n,-.003+rnd()*.003),t,b,n,r*(1.15+rnd()*.5),r,r*.6,.008))}}
   // forehead
   add_(P_ell(hp(0,.018,.058),hRt,hUp,hFw,.07,.042,.038,.03));
-  // brow ridge — heavy & knitted (two masses + central furrow bunching)
-  for(const s of [-1,1])add_(P_ell(hp(s*.033,.003,.089),rot(hRt,hFw,s*.2),hUp,hFw,.038,.017,.024,.02));
-  add_(P_ell(hp(0,.012,.096),hRt,hUp,hFw,.012,.02,.012,.012)); // procerus bulge between brows
-  // eye sockets
-  for(const s of [-1,1])cut(P_ell(hp(s*.034,-.014,.088),hRt,hUp,hFw,.024,.016,.02,.016));
-  // eyeballs + lids (downcast, nearly closed)
-  for(const s of [-1,1]){add_(P_sph(hp(s*.034,-.016,.075),.016,.004));add_(P_ell(hp(s*.034,-.01,.085),hRt,hUp,hFw,.019,.008,.011,.006));
-    add_(P_ell(hp(s*.035,-.027,.084),hRt,hUp,hFw,.017,.005,.009,.006))}
+  // brow ridge — heavy & knitted: two masses that overhang the eyes, pulled down and in toward the nose
+  for(const s of [-1,1])add_(P_ell(hp(s*.032,.002,.091),rot(hRt,hFw,s*.24),rot(hUp,hFw,s*.24),hFw,.039,.018,.026,.026));
+  add_(P_ell(hp(0,.01,.098),hRt,hUp,hFw,.012,.02,.012,.012)); // procerus bulge between brows
+  for(const s of [-1,1])cut(P_ell(hp(s*.008,.016,.107),rot(hRt,hFw,s*.15),rot(hUp,hFw,s*.15),hFw,.003,.015,.0045,.008)); // the frown's vertical creases
+  // eye sockets: carved under the brow, then the eyeballs and heavy downcast lids sit in them
+  const post=p=>{p.post=1;return add_(p)};
+  for(const s of [-1,1])cut(P_ell(hp(s*.034,-.013,.093),hRt,hUp,hFw,.022,.013,.016,.02));
+  for(const s of [-1,1]){const e=hp(s*.034,-.017,.077);post(P_sph(e,.0145,.003));
+    post(P_ell(madd(e,hUp,.004,hFw,.007),hRt,rot(hUp,hRt,.5),rot(hFw,hRt,.5),.018,.006,.011,.004)); // upper lid, drooping over the eye
+    post(P_ell(madd(e,hUp,-.011,hFw,.007),hRt,hUp,hFw,.015,.0035,.008,.004))}                                       // lower lid
   // cheekbones & cheeks
   for(const s of [-1,1]){add_(P_ell(hp(s*.058,-.024,.06),hRt,hUp,hFw,.026,.017,.026,.022));add_(P_ell(hp(s*.045,-.06,.063),hRt,hUp,hFw,.026,.028,.024,.03))}
   // nose: bridge, tip, wings
@@ -379,10 +403,10 @@ function thinker(){
   // nasolabial folds
   for(const s of [-1,1])add_(P_cone(hp(s*.025,-.048,.1),hp(s*.031,-.078,.09),.0045,.0035,.016));
   // mouth: compressed lips
-  add_(P_ell(hp(0,-.071,.102),hRt,hUp,hFw,.024,.009,.011,.01));
+  add_(P_ell(hp(0,-.071,.102),hRt,hUp,hFw,.024,.009,.011,.014));
   cut(P_ell(hp(0,-.064,.118),hRt,hUp,hFw,.004,.006,.004,.004)); // philtrum
-  add_(P_ell(hp(0,-.085,.1),hRt,hUp,hFw,.022,.009,.012,.012));
-  cut(P_ell(hp(0,-.0785,.114),hRt,hUp,hFw,.021,.0016,.01,.004));
+  add_(P_ell(hp(0,-.085,.1),hRt,hUp,hFw,.022,.009,.012,.016));
+  cut(P_ell(hp(0,-.0785,.114),hRt,hUp,hFw,.021,.002,.01,.006));
   for(const s of [-1,1])cut(P_sph(hp(s*.024,-.079,.104),.0035,.005));
   // jaw & chin
   for(const s of [-1,1])add_(P_cone(hp(s*.068,-.04,-.012),hp(s*.036,-.1,.062),.021,.019,.03));
@@ -395,20 +419,30 @@ function thinker(){
 
   /* ===== ARMS ===== */
   function arm(sh,el,wr,s,pron){
-    const ua=nrm(sub(el,sh)),fa=nrm(sub(wr,el));
-    add_(P_cone(sh,el,.068,.05,.045));
+    const ua=nrm(sub(el,sh)),fa=nrm(sub(wr,el)),ul=len(sub(el,sh));
+    add_(P_cone(sh,el,.078,.058,.05));
     // biceps (front) and triceps (back): front ~ direction from elbow bend
     let front=nrm(sub(fa,mul(ua,dot(fa,ua))));if(len(sub(fa,mul(ua,dot(fa,ua))))<.05)front=cFw;
-    const side=nrm(cross(ua,front));
-    add_(P_ell(madd(lerp(sh,el,.55),front,.026),ua,front,side,.11,.047,.044,.03));
-    add_(P_ell(madd(lerp(sh,el,.42),front,-.026),ua,front,side,.12,.048,.05,.03));
+    const side=nrm(cross(ua,front));const out=mul(side,dot(side,V(s,0,0))>0?1:-1);
+    // deltoid: thick cap tapering to its insertion half way down the humerus
+    add_(P_ell(madd(lerp(sh,el,.2),out,.018),ua,front,side,ul*.42,.08,.082,.04));
+    add_(P_ell(madd(lerp(sh,el,.44),out,.03),ua,front,side,ul*.2,.028,.03,.035));
+    // biceps: belly bunched toward the bent elbow; brachialis peeks out on the outer side
+    add_(P_ell(madd(lerp(sh,el,.6),front,.036),ua,front,side,ul*.36,.056,.052,.03));
+    add_(P_ell(madd(lerp(sh,el,.74),front,.012,out,.03),ua,front,side,ul*.2,.03,.03,.03));
+    // triceps: long head and lateral head (the horseshoe on the back of the arm)
+    add_(P_ell(madd(lerp(sh,el,.4),front,-.034,out,-.012),ua,front,side,ul*.42,.058,.054,.03));
+    add_(P_ell(madd(lerp(sh,el,.38),front,-.024,out,.034),ua,front,side,ul*.32,.044,.04,.03));
+    add_(P_ell(madd(lerp(sh,el,.78),front,-.034),ua,front,side,ul*.2,.028,.04,.03)); // tendon plate above the elbow
     // elbow: olecranon + epicondyles
-    add_(P_sph(madd(el,front,-.034),.03,.025));
-    // forearm
-    add_(P_cone(el,wr,.053,.034,.035));
-    const ff=nrm(cross(fa,side));
-    add_(P_ell(madd(lerp(el,wr,.28),side,s*.016,ff,.012),fa,side,ff,.1,.042,.04,.03)); // brachioradialis/extensors
-    add_(P_ell(madd(lerp(el,wr,.3),side,-s*.016,ff,-.008),fa,side,ff,.095,.036,.038,.03)); // flexors
+    add_(P_sph(madd(el,front,-.036),.028,.022));
+    for(const e of [-1,1])add_(P_sph(madd(el,side,e*.034,front,-.01),.017,.02));
+    // forearm: thick near the elbow, flat and wide at the wrist
+    add_(P_cone(el,wr,.06,.038,.035));
+    const ff=nrm(cross(fa,side));const fl=len(sub(wr,el));
+    add_(P_ell(madd(lerp(el,wr,.24),side,s*.024,ff,.018),fa,side,ff,fl*.36,.052,.048,.03)); // brachioradialis / extensors
+    add_(P_ell(madd(lerp(el,wr,.3),side,-s*.022,ff,-.014),fa,side,ff,fl*.34,.046,.046,.03)); // flexors
+    add_(P_ell(madd(lerp(el,wr,.52),ff,.012),fa,side,ff,fl*.3,.03,.03,.03));                // extensor bellies running down to the wrist
     return {ua,fa,side,front};
   }
   const aR=arm(J.shR,J.elR,J.wrR,-1),aL=arm(J.shL,J.elL,J.wrL,1);
@@ -431,12 +465,15 @@ function thinker(){
         add_(P_cone(p,q,r0,r1,.006));
         if(k<2)add_(P_sph(q,r1*1.08,.004));
         p=q}}
-    // thumb
-    {let p=F.p(.03*scale,-.008*scale,.02*scale);let dir=thumb.d;const ls2=[.045,.034,.028];
+    add_(P_ell(F.p(-.026*scale,-.01*scale,.05*scale),F.x,F.y,F.z,.016*scale,.012*scale,.04*scale,.015)); // hypothenar
+    // thumb: either curled by angles, or laid along given hand-local points
+    if(thumb.pts){let p=F.p(.03*scale,-.01*scale,.02*scale);thumb.pts.forEach((t,k)=>{const q=F.p(t[0]*scale,t[1]*scale,t[2]*scale);add_(P_cone(p,q,(k?.0125:.017)*scale,(.0125-k*.0012)*scale,k?.006:.018));if(k)add_(P_sph(p,.0128*scale,.004));p=q})}
+    else{let p=F.p(.03*scale,-.008*scale,.02*scale);let dir=thumb.d;const ls2=[.045,.034,.028];
       for(let k=0;k<3;k++){dir=rot(dir,thumb.ax,thumb.c[k]);const q=madd(p,dir,ls2[k]*scale);add_(P_cone(p,q,(k?.0125:.017)*scale,(.0125-k*.0012)*scale,k?.006:.018));p=q}}
   }
-  // RIGHT hand: back of the hand faces forward, fingers curled back toward the throat; the chin rests on them
-  hand(RH,[[1.45,1.35,.75],[1.5,1.4,.8],[1.5,1.4,.8],[1.45,1.35,.75]],{d:nrm(madd([0,0,0],RH.z,.75,RH.x,.45,RH.y,-.4)),ax:nrm(cross(RH.y,RH.z)),c:[.1,.35,.3]},[.05,0,-.04,-.1],HS);
+  // RIGHT hand: back of the hand faces forward, fingers curled back toward the throat; the chin rests on them.
+  // The thumb folds in along the side of the curled index finger instead of sticking out.
+  hand(RH,[[1.45,1.35,.75],[1.5,1.4,.8],[1.5,1.4,.8],[1.45,1.35,.75]],{pts:[[.044,-.03,.056],[.042,-.05,.086],[.034,-.066,.104]]},[.05,0,-.04,-.1],HS);
   // LEFT hand: limp, hanging over the knee, palm toward the leg
   {const hz=nrm(V(-.08,-1,.22));const hy=nrm(V(.2,.05,1)); // back of hand faces forward-out
     const F=frameXYZ(J.wrL,cross(hy,hz),hy);const thumbSign=dot(F.x,V(-1,0,0))>0?1:-1;const Fx=mul(F.x,thumbSign);
@@ -446,30 +483,35 @@ function thinker(){
 
   /* ===== LEGS ===== */
   function leg(hip,knee,ank,s){
-    const th=nrm(sub(knee,hip)),sh=nrm(sub(ank,knee));
-    add_(P_cone(hip,knee,.118,.066,.06));
+    const th=nrm(sub(knee,hip)),sh=nrm(sub(ank,knee)),tl=len(sub(knee,hip)),sl=len(sub(ank,knee));
+    add_(P_cone(hip,knee,.124,.07,.06));
     const up=nrm(sub(UP,mul(th,dot(UP,th))));const lat=nrm(cross(th,up)); // lat points to one side
     const out=mul(lat,dot(lat,V(s,0,0))>0?1:-1);
     // quadriceps: rectus femoris (top), vastus lateralis (outer), vastus medialis (inner teardrop above knee)
-    add_(P_ell(madd(lerp(hip,knee,.45),up,.048),th,up,out,.2,.055,.06,.04));
-    add_(P_ell(madd(lerp(hip,knee,.5),out,.05,up,.012),th,up,out,.21,.06,.055,.04));
-    add_(P_ell(madd(lerp(hip,knee,.8),out,-.046,up,.022),th,up,out,.085,.048,.046,.03));
+    add_(P_ell(madd(lerp(hip,knee,.46),up,.056),th,up,out,tl*.46,.06,.06,.04));
+    add_(P_ell(madd(lerp(hip,knee,.5),out,.058,up,.016),th,up,out,tl*.5,.064,.058,.04));
+    add_(P_ell(madd(lerp(hip,knee,.8),out,-.05,up,.026),th,up,out,tl*.2,.052,.05,.03));
+    // sartorius: a shallow groove spiralling across the front of the thigh
+    cut(P_cone(madd(lerp(hip,knee,.3),out,-.03,up,.112),madd(lerp(hip,knee,.72),out,-.044,up,.096),.006,.006,.03));
     // hamstrings pressed on the seat (flattened)
-    add_(P_ell(madd(lerp(hip,knee,.4),up,-.045),th,up,out,.21,.048,.07,.05));
+    add_(P_ell(madd(lerp(hip,knee,.42),up,-.05),th,up,out,tl*.5,.05,.075,.05));
     // adductors (inner thigh)
-    add_(P_ell(madd(lerp(hip,knee,.25),out,-.06,up,-.01),th,up,out,.16,.06,.055,.05));
-    // knee: patella + condyles
-    add_(P_ell(madd(knee,th,.045,up,.028),th,up,out,.034,.022,.032,.02));
-    add_(P_ell(madd(knee,th,.0),th,up,out,.05,.058,.07,.03));
+    add_(P_ell(madd(lerp(hip,knee,.25),out,-.064,up,-.008),th,up,out,tl*.4,.064,.058,.05));
+    // knee: square-ish condyles, a flat kneecap, its tendon and the fat pads either side
+    add_(P_box(madd(knee,th,.004,up,.002),th,up,out,.028,.032,.046,.024,.03));
+    add_(P_ell(madd(knee,th,.05,up,.036),th,up,out,.03,.016,.03,.016));
+    const fw=nrm(sub(V(0,0,1),mul(sh,dot(V(0,0,1),sh))));const sd=nrm(cross(sh,fw));   // sd*s points to the inner side
+    add_(P_cone(madd(knee,th,.05,up,.016),madd(knee,sh,.085,fw,.046),.013,.012,.02));
+    for(const e of [-1,1])add_(P_sph(madd(knee,th,.04,sh,.03,sd,e*.034),.017,.02));
     // shin bone + calf
-    add_(P_cone(knee,ank,.064,.04,.04));
-    const fw=nrm(sub(V(0,0,1),mul(sh,dot(V(0,0,1),sh))));const sd=nrm(cross(sh,fw));
-    add_(P_ell(madd(lerp(knee,ank,.3),fw,-.046),sh,fw,sd,.15,.068,.07,.04)); // gastrocnemius
-    add_(P_ell(madd(lerp(knee,ank,.25),fw,-.035,sd,s*.03),sh,fw,sd,.1,.042,.036,.03));
-    add_(P_ell(madd(lerp(knee,ank,.35),fw,.026,sd,s*.014),sh,fw,sd,.13,.024,.024,.025)); // tibialis
-    // Achilles & ankle bones
-    add_(P_cone(madd(lerp(knee,ank,.6),fw,-.036),madd(ank,fw,-.036,sh,.02),.024,.015,.02));
-    add_(P_sph(madd(ank,sd,.032),.02,.015));add_(P_sph(madd(ank,sd,-.032,sh,-.01),.02,.015));
+    add_(P_cone(knee,ank,.07,.045,.04));
+    // gastrocnemius: two heads, the inner one lower and fuller; soleus flares out beneath them
+    add_(P_ell(madd(lerp(knee,ank,.32),fw,-.05,sd,s*.026),sh,fw,sd,sl*.25,.06,.052,.035));
+    add_(P_ell(madd(lerp(knee,ank,.26),fw,-.048,sd,-s*.03),sh,fw,sd,sl*.23,.056,.05,.035));
+    add_(P_ell(madd(lerp(knee,ank,.52),fw,-.028),sh,fw,sd,sl*.27,.042,.064,.035));
+    add_(P_ell(madd(lerp(knee,ank,.36),fw,.03,sd,-s*.016),sh,fw,sd,sl*.3,.026,.026,.025)); // tibialis    // Achilles & ankle bones
+    add_(P_cone(madd(lerp(knee,ank,.58),fw,-.038),madd(ank,fw,-.04,sh,.02),.024,.016,.02));
+    add_(P_sph(madd(ank,sd,s*.033,sh,-.012),.02,.015));add_(P_sph(madd(ank,sd,-s*.033,sh,.004),.02,.015));
     return {fw,sd};
   }
   const lR=leg(J.hipR,J.kneeR,J.ankR,-1),lL=leg(J.hipL,J.kneeL,J.ankL,1);
@@ -477,16 +519,22 @@ function thinker(){
   /* feet: heroic size, toes gripping (curled) */
   function foot(ank,heel,ball,s,grip){
     const fz=nrm(sub(ball,heel));const fy=nrm(sub(UP,mul(fz,dot(UP,fz))));const fx=nrm(cross(fy,fz)); // fx: figure's left
-    add_(P_sph(heel,.046,.03));
-    add_(P_cone(madd(ank,fy,-.01),heel,.042,.044,.04));
-    add_(P_ell(lerp(heel,ball,.5),fx,fy,fz,.054,.033,.13,.04)); // foot body
-    add_(P_ell(madd(lerp(heel,ball,.62),fy,.012,fx,-s*.012),fx,fy,fz,.035,.02,.08,.03)); // instep
-    add_(P_ell(madd(lerp(heel,ball,.66),fx,s*.02,fy,-.008),fx,fy,fz,.06,.024,.08,.03));
+    add_(P_ell(madd(heel,fz,.006,fy,.004),fx,fy,fz,.046,.05,.054,.03));                       // heel
+    add_(P_cone(madd(ank,fy,-.01),heel,.044,.046,.04));
+    add_(P_ell(lerp(heel,ball,.5),fx,fy,fz,.058,.034,.135,.04));                               // foot body
+    // arch: the instep rises high on the inner side, the outer edge lies flat
+    add_(P_ell(madd(lerp(heel,ball,.44),fy,.022,fx,-s*.01),fx,fy,fz,.04,.03,.1,.035));
+    add_(P_ell(madd(lerp(heel,ball,.62),fx,s*.026,fy,-.008),fx,fy,fz,.034,.024,.1,.03));
+    add_(P_ell(madd(ball,fz,-.022,fy,-.004),fx,fy,fz,.068,.028,.04,.025));                    // ball of the foot
+    // extensor tendons fanning out from the ankle to the toes
+    for(let t=0;t<4;t++){const u=-s*(.036-t*.023);add_(P_cone(madd(lerp(heel,ball,.42),fy,.04,fx,u*.35),madd(ball,fy,.022,fx,u,fz,-.012),.006,.0055,.014))}
     // toes: big toe on the inner side (toward midline: -s * fx ... midline is -x for left foot)
-    const inner=-s;const tx=[.04,.015,-.007,-.026,-.043],tl=[[.035,.03],[.026,.018,.014],[.022,.015,.012],[.019,.013,.011],[.016,.012,.01]],tr=[.019,.0125,.0115,.0105,.0095];
-    for(let t=0;t<5;t++){let p=madd(ball,fx,inner*tx[t],fz,(t===0?.01:-.004*t),fy,-.004);let dir=rot(fz,fy,inner*(t-1.5)*-.04);const n=tl[t].length;
-      add_(P_sph(p,tr[t]*1.15,.01));
-      for(let k=0;k<n;k++){const ax=nrm(cross(fy,dir));dir=rot(dir,ax,grip[k]*(t===0?.8:1));const q=madd(p,dir,tl[t][k]);add_(P_cone(p,q,tr[t]*(1-k*.08),tr[t]*(1-(k+1)*.08),.005));p=q}}
+    const inner=-s;const tx=[.043,.016,-.008,-.029,-.048],tl=[[.034,.028],[.025,.017,.013],[.022,.015,.012],[.019,.013,.011],[.016,.012,.01]],tr=[.0215,.0145,.0135,.0125,.0112];
+    for(let t=0;t<5;t++){let p=madd(ball,fx,inner*tx[t],fz,(t===0?.012:-.005*t),fy,-.002);let dir=rot(fz,fy,inner*(t-1.5)*-.03);const n=tl[t].length;
+      add_(P_ell(p,fx,fy,fz,tr[t]*1.1,tr[t]*1.05,tr[t]*1.3,.01));
+      for(let k=0;k<n;k++){const ax=nrm(cross(fy,dir));dir=rot(dir,ax,grip[k]*(t===0?.8:1));const q=madd(p,dir,tl[t][k]);add_(P_cone(p,q,tr[t]*(1-k*.06),tr[t]*(1-(k+1)*.06),.005));
+        if(k<n-1)add_(P_sph(madd(q,fy,.002),tr[t]*.98,.004));                                   // knuckle
+        p=q}}
   }
   foot(J.ankR,V(-.238,.04,.24),V(-.252,.028,.465),-1,[-.15,.55,.45]);
   foot(J.ankL,V(.192,.07,.385),V(.213,.06,.605),1,[.35,.9,.6]);
@@ -505,7 +553,7 @@ function thinker(){
   };
   // Modelling displacement: Rodin's lumpy, thumbed clay surface (very low amplitude)
   const disp=(x,y,z,d)=>{if(d>.02||d<-.02)return 0;return .0016*fbm(x*28,y*28,z*28,2)+.0006*vnoise(x*90,y*90,z*90)};
-  return {add:A,cut:C,disp,J,L,bbox:[V(-.42,-.03,-.32),V(.45,1.36,.72)]};
+  return {add:A,cut:C,disp,J,L,bbox:[V(-.42,-.03,-.32),V(.47,1.42,.74)]};
 }
 
 /* ---------- the rock the Thinker sits on (rough, chiselled) ---------- */
@@ -524,6 +572,12 @@ function rock(){
   const disp=(x,y,z,d)=>{if(d>.08)return 0;const top=Math.max(0,Math.min(1,(y-.035)/.05));const r=1-Math.abs(vnoise(x*7+3,y*7,z*7));
     return top*(.034*fbm(x*3.5,y*3.5,z*3.5,3)+.012*r*r+.006*fbm(x*20,y*20,z*20,2))+.003*vnoise(x*60,y*60,z*60)};
   return {add:A,cut:C,disp,bbox:[V(-.48,-.1,-.5),V(.48,.6,.7)]};
+}
+/* ---------- the cast base plate alone, under the scanned bronze (whose rock is part of the scan) ---------- */
+function plate(){
+  const X=V(1,0,0),Y=V(0,1,0),Z=V(0,0,1);
+  const disp=(x,y,z,d)=>{if(d>.04)return 0;const side=Math.max(0,Math.min(1,(-.004-y)/.012));return side*.006*fbm(x*16,y*16,z*16,3)+.0012*vnoise(x*70,y*70,z*70)};
+  return {add:[P_box(V(-.035,-.045,0),X,Y,Z,.42,.025,.46,.02,0)],cut:[],disp,bbox:[V(-.5,-.1,-.52),V(.42,.03,.52)]};
 }
 
 /* ---------- one of the Three Shades (simplified standing figure, head bowed, left arm hanging) ---------- */
@@ -559,13 +613,20 @@ function meshPart(M,h,part,parts,progress){
   const G=grid(M,h),{B,lo,NX,NY,BX,BY,BZ}=G;
   const hd=B*h*Math.sqrt(3)/2;const all=M.add,cuts=M.cut;
   const D0=new Float32Array(BX*BY*BZ);const act=[];
-  for(let bz=0;bz<BZ;bz++)for(let by=0;by<BY;by++)for(let bx=0;bx<BX;bx++){
-    const cx=lo[0]+(bx+.5)*B*h,cy=lo[1]+(by+.5)*B*h,cz=lo[2]+(bz+.5)*B*h;
-    const d=evalList(M,all,cuts,cx,cy,cz);D0[bx+BX*(by+BY*bz)]=d;if(bz%parts===part&&Math.abs(d)<hd*1.6+.004)act.push([bx,by,bz,cx,cy,cz])}
+  for(let bz=0;bz<BZ;bz++)for(let by=0;by<BY;by++)for(let bx=0;bx<BX;bx++)
+    D0[bx+BX*(by+BY*bz)]=evalList(M,all,cuts,lo[0]+(bx+.5)*B*h,lo[1]+(by+.5)*B*h,lo[2]+(bz+.5)*B*h);
+  // A block is meshed when its centre is near the surface, or when its centre and a neighbour's lie on opposite sides:
+  // thin creases make the field much steeper than a true distance, and the sign change still catches them.
+  const D=(x,y,z)=>x<0||y<0||z<0||x>=BX||y>=BY||z>=BZ?1:D0[x+BX*(y+BY*z)];
+  for(let bz=part;bz<BZ;bz+=parts)for(let by=0;by<BY;by++)for(let bx=0;bx<BX;bx++){const d=D(bx,by,bz);
+    if(Math.abs(d)<hd*1.6+.004||(d<0)!==(D(bx-1,by,bz)<0)||(d<0)!==(D(bx+1,by,bz)<0)||(d<0)!==(D(bx,by-1,bz)<0)||(d<0)!==(D(bx,by+1,bz)<0)||(d<0)!==(D(bx,by,bz-1)<0)||(d<0)!==(D(bx,by,bz+1)<0))
+      act.push([bx,by,bz,lo[0]+(bx+.5)*B*h,lo[1]+(by+.5)*B*h,lo[2]+(bz+.5)*B*h])}
   const S=B+1;
   const cullFor=(cx,cy,cz,margin)=>{const ds=new Float64Array(all.length);let dm=1e9;for(let i=0;i<all.length;i++){const d=evalP(all[i],cx,cy,cz);ds[i]=d;if(d<dm)dm=d}
     const base=dm+2*(hd+margin)+.002;const a=[];for(let i=0;i<all.length;i++)if(ds[i]<base+all[i].k)a.push(all[i]);
     const c=[];for(const P of cuts){if(evalP(P,cx,cy,cz)<2*(hd+margin)+P.k+.004+Math.max(0,-dm))c.push(P)}return [a,c]};
+  const ctr=(b,ax)=>lo[ax]+(b+.5)*B*h;
+  const lists=new Map(),listFor=(bx,by,bz)=>{const key=bx+(BX+1)*(by+(BY+1)*bz);let L=lists.get(key);if(!L){L=cullFor(ctr(bx,0),ctr(by,1),ctr(bz,2),0);lists.set(key,L)}return L};
   const D0at=(x,y,z)=>{let fx=(x-lo[0])/(B*h)-.5,fy=(y-lo[1])/(B*h)-.5,fz=(z-lo[2])/(B*h)-.5;fx=Math.max(0,Math.min(BX-1.001,fx));fy=Math.max(0,Math.min(BY-1.001,fy));fz=Math.max(0,Math.min(BZ-1.001,fz));
     const ix=fx|0,iy=fy|0,iz=fz|0,tx=fx-ix,ty=fy-iy,tz=fz-iz;const g=(a,b,c)=>D0[Math.min(BX-1,a)+BX*(Math.min(BY-1,b)+BY*Math.min(BZ-1,c))];
     const c00=g(ix,iy,iz)*(1-tx)+g(ix+1,iy,iz)*tx,c10=g(ix,iy+1,iz)*(1-tx)+g(ix+1,iy+1,iz)*tx,c01=g(ix,iy,iz+1)*(1-tx)+g(ix+1,iy,iz+1)*tx,c11=g(ix,iy+1,iz+1)*(1-tx)+g(ix+1,iy+1,iz+1)*tx;
@@ -574,9 +635,13 @@ function meshPart(M,h,part,parts,progress){
   const co=[[0,0,0],[1,0,0],[0,1,0],[1,1,0],[0,0,1],[1,0,1],[0,1,1],[1,1,1]];
   const v8=new Float32Array(8),vals=new Float32Array(S*S*S);
   const pos=[],nor=[],ao=[],cells=[];let ai=0;
-  for(const b of act){const [bx,by,bz,cx,cy,cz]=b;const [la,lc]=cullFor(cx,cy,cz,0);const [wa,wc]=cullFor(cx,cy,cz,.028);
+  for(const b of act){const [bx,by,bz,cx,cy,cz]=b;const [la,lc]=listFor(bx,by,bz);const [wa,wc]=cullFor(cx,cy,cz,.028);
     const x0=lo[0]+bx*B*h,y0=lo[1]+by*B*h,z0=lo[2]+bz*B*h;
-    for(let k=0;k<S;k++)for(let j=0;j<S;j++)for(let i=0;i<S;i++)vals[i+S*(j+S*k)]=evalList(M,la,lc,x0+i*h,y0+j*h,z0+k*h);
+    // Samples on the upper faces belong to the next block. Evaluating them with that block's (differently culled) list
+    // makes every sample's value unique, so neighbouring blocks never disagree on its sign and leave a hole.
+    const own=[[la,lc]];for(let o=1;o<8;o++)own.push(listFor(bx+(o&1),by+(o>>1&1),bz+(o>>2)));
+    for(let k=0;k<S;k++)for(let j=0;j<S;j++)for(let i=0;i<S;i++){const L=own[(i===B)|(j===B)<<1|(k===B)<<2];
+      vals[i+S*(j+S*k)]=evalList(M,L[0],L[1],lo[0]+(bx*B+i)*h,lo[1]+(by*B+j)*h,lo[2]+(bz*B+k)*h)}
     const g=(x,y,z)=>evalList(M,la,lc,x,y,z),gw=(x,y,z)=>evalList(M,wa,wc,x,y,z);
     for(let k=0;k<B;k++)for(let j=0;j<B;j++)for(let i=0;i<B;i++){
       let m=0;for(let c=0;c<8;c++){const v=vals[(i+co[c][0])+S*((j+co[c][1])+S*(k+co[c][2]))];v8[c]=v;if(v<0)m|=1<<c}
@@ -616,6 +681,10 @@ function assemble(parts){
   const cnt=new Map();for(let v=0;v<nv;v++){const r=fnd(v);cnt.set(r,(cnt.get(r)||0)+1)}
   const keep=[];for(let t=0;t<idx.length;t+=3)if(cnt.get(fnd(idx[t]))>=60)keep.push(idx[t],idx[t+1],idx[t+2]);
   const I=new Uint32Array(keep);
+  return {pos,nor,ao,cur:curvature(pos,nor,I),idx:I};
+}
+/* mean curvature per vertex (from how normals turn along edges), smoothed a little */
+function curvature(pos,nor,I){const nv=pos.length/3;
   const cs=new Float32Array(nv),cn=new Float32Array(nv);
   for(let t=0;t<I.length;t+=3)for(let e2=0;e2<3;e2++){const a=I[t+e2],b=I[t+(e2+1)%3];
     const dx=pos[a*3]-pos[b*3],dy=pos[a*3+1]-pos[b*3+1],dz=pos[a*3+2]-pos[b*3+2];const l2=dx*dx+dy*dy+dz*dz||1e-9;
@@ -623,17 +692,17 @@ function assemble(parts){
   let cur=new Float32Array(nv);for(let v=0;v<nv;v++)cur[v]=cn[v]?cs[v]/cn[v]:0;
   for(let it=0;it<2;it++){const acc=new Float32Array(nv),c2=new Float32Array(nv);for(let t=0;t<I.length;t+=3)for(let e2=0;e2<3;e2++){const a=I[t+e2],b=I[t+(e2+1)%3];acc[a]+=cur[b];acc[b]+=cur[a];c2[a]++;c2[b]++}
     for(let v=0;v<nv;v++)if(c2[v])cur[v]=cur[v]*.4+.6*acc[v]/c2[v]}
-  return {pos,nor,ao,cur,idx:I};
+  return cur;
 }
 function mesh(M,h,progress){const t0=Date.now();const r=assemble([meshPart(M,h,0,1,progress)]);r.ms=Date.now()-t0;return r}
-const MODELS={thinker,rock,shade};
-function build(name,h,progress){const M=MODELS[name]();const r=mesh(M,h,progress);if(M.L)r.L=M.L;if(M.J)r.J=M.J;return r}
+const MODELS={thinker,rock,plate,shade};
+function build(name,h,progress){const M=MODELS[name](h);const r=mesh(M,h,progress);if(M.L)r.L=M.L;if(M.J)r.J=M.J;return r}
 function landmarks(name){const M=MODELS[name]();return {L:M.L,J:M.J}}
 if(typeof self!=='undefined'&&typeof self.postMessage==='function'&&typeof window==='undefined'){
-  self.onmessage=e=>{const {name,h,id,part,parts}=e.data;let last=0;const M=MODELS[name]();
+  self.onmessage=e=>{const {name,h,id,part,parts}=e.data;let last=0;const M=MODELS[name](h);
     const r=meshPart(M,h,part,parts,p=>{const n=Date.now();if(n-last>120){last=n;self.postMessage({id,progress:p})}});
     self.postMessage({id,done:true,r},[r.pos.buffer,r.nor.buffer,r.ao.buffer,r.cells.buffer])}}
-return {build,assemble,landmarks,meshPart,MODELS};
+return {build,assemble,curvature,landmarks,meshPart,MODELS};
 }
 </script>
 <script type="importmap">{"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js"}}</script>
@@ -755,21 +824,60 @@ function bronzeGeometry(r,o){o=o||{};const g=new THREE.BufferGeometry();g.setAtt
 
 /* ---------------- sculpting (web workers) ---------------- */
 const SC=1.3,PED_H=1.0;                         // statue scale (≈1.8 m tall with its rock) and pedestal height
-const H_FINE=touch?.0058:.005;
+const H_FINE=touch?.005:.0042;
 const SCULPT=SCULPT_WORKER();
-const LM=SCULPT.landmarks('thinker');           // anatomical landmarks (figure-local)
-function sculptAll(onProg){
+let LM=SCULPT.landmarks('thinker');             // anatomical landmarks (figure-local); replaced by SCAN_LM once the scan loads
+/* landmarks measured on the scanned bronze (thinker.bin), in the same figure frame */
+const SCAN_LM={
+  J:{hipR:[-.19,.71,.07],hipL:[.05,.70,.05],kneeR:[-.05,.585,.665],kneeL:[.288,.62,.521],ankR:[-.097,.247,.326],ankL:[.12,.22,.17],
+     shR:[-.11,1.02,.35],shL:[.30,1.08,.25],elR:[.19,.77,.45],wrR:[.28,.93,.60],elL:[.338,.813,.328],wrL:[.332,.684,.558]},
+  L:{brow:[.271,1.154,.703],nose:[.277,1.093,.649],lips:[.27,1.076,.628],fistR:[.25,1.0,.62],handL:[.29,.592,.65],
+     back:[.03,1.027,-.004],backLow:[-.044,.812,-.074],glute:[-.061,.663,-.077],neck:[.2,1.27,.47],head:[.25,1.28,.61],ear:[.145,1.209,.623],
+     chest:[-.02,.961,.562],belly:[.06,.80,.41],shoulderR:[-.11,1.02,.35],shoulderL:[.30,1.08,.25],kneeR:[-.05,.585,.665],kneeL:[.288,.62,.521],
+     toesR:[-.04,.055,.41],toesL:[.108,.109,.357],headC:[.24,1.22,.60],faceFw:[.08,-.66,.75],faceUp:[-.07,.75,.66]}};
+/* one step of Loop subdivision: rounds off the scan's facets for close-ups, carrying a per-vertex value (AO) along */
+function loopSubdivide(pos,idx,a){const nv=pos.length/3,nt=idx.length/3,E=new Map(),eo=[],ev=new Uint32Array(nt*3);
+  for(let t=0;t<nt;t++)for(let e=0;e<3;e++){const u=idx[t*3+e],v=idx[t*3+(e+1)%3],o=idx[t*3+(e+2)%3],k=u<v?u*nv+v:v*nv+u;let id=E.get(k);
+    if(id===undefined){id=eo.length/4;E.set(k,id);eo.push(u,v,o,-1)}else eo[id*4+3]=o;ev[t*3+e]=id}
+  const ne=eo.length/4,P=new Float32Array((nv+ne)*3),A=new Float32Array(nv+ne);
+  for(let e=0;e<ne;e++){const u=eo[e*4],v=eo[e*4+1],o1=eo[e*4+2],o2=eo[e*4+3],j=nv+e;
+    if(o2<0){for(let k=0;k<3;k++)P[j*3+k]=(pos[u*3+k]+pos[v*3+k])/2;A[j]=(a[u]+a[v])/2}
+    else{for(let k=0;k<3;k++)P[j*3+k]=.375*(pos[u*3+k]+pos[v*3+k])+.125*(pos[o1*3+k]+pos[o2*3+k]);A[j]=.375*(a[u]+a[v])+.125*(a[o1]+a[o2])}}
+  const sum=new Float64Array(nv*3),sa=new Float64Array(nv),deg=new Uint32Array(nv);
+  for(let e=0;e<ne;e++){const u=eo[e*4],v=eo[e*4+1];for(let k=0;k<3;k++){sum[u*3+k]+=pos[v*3+k];sum[v*3+k]+=pos[u*3+k]}sa[u]+=a[v];sa[v]+=a[u];deg[u]++;deg[v]++}
+  for(let i=0;i<nv;i++){const n=deg[i],b=n>3?3/(8*n):3/16;for(let k=0;k<3;k++)P[i*3+k]=(1-n*b)*pos[i*3+k]+b*sum[i*3+k];A[i]=(1-n*b)*a[i]+b*sa[i]}
+  const I=new Uint32Array(nt*12);for(let t=0;t<nt;t++){const x=idx[t*3],y=idx[t*3+1],z=idx[t*3+2],ab=nv+ev[t*3],bc=nv+ev[t*3+1],ca=nv+ev[t*3+2];I.set([x,ab,ca,ab,y,bc,ca,bc,z,ab,bc,ca],t*12)}
+  return {pos:P,idx:I,a:A}}
+function vertexNormals(P,I){const N=new Float32Array(P.length);
+  for(let t=0;t<I.length;t+=3){const a=I[t]*3,b=I[t+1]*3,c=I[t+2]*3;const ux=P[b]-P[a],uy=P[b+1]-P[a+1],uz=P[b+2]-P[a+2],vx=P[c]-P[a],vy=P[c+1]-P[a+1],vz=P[c+2]-P[a+2];
+    const nx=uy*vz-uz*vy,ny=uz*vx-ux*vz,nz=ux*vy-uy*vx;for(const o of [a,b,c]){N[o]+=nx;N[o+1]+=ny;N[o+2]+=nz}}
+  for(let i=0;i<N.length;i+=3){const l=Math.hypot(N[i],N[i+1],N[i+2])||1;N[i]/=l;N[i+1]/=l;N[i+2]/=l}return N}
+/* the scanned bronze (figure and rock in one piece), made from an STL by tools/stl-to-thinker.mjs.
+   Resolves to {thinker, small} meshes, or null when it can't be fetched (e.g. opened from file://): then the figure is sculpted instead. */
+async function loadScan(){try{const res=await fetch('thinker.bin');if(!res.ok)return null;const buf=await res.arrayBuffer();const dv=new DataView(buf);
+    if(String.fromCharCode(...new Uint8Array(buf,0,4))!=='THK1')return null;const nv=dv.getUint32(4,true),nt=dv.getUint32(8,true);
+    const lo=[0,1,2].map(k=>dv.getFloat32(12+k*4,true)),hi=[0,1,2].map(k=>dv.getFloat32(24+k*4,true));
+    const q=new Uint16Array(buf.slice(36,36+nv*6)),idx=new Uint16Array(buf.slice(36+nv*6,36+nv*6+nt*6)),a8=new Uint8Array(buf,36+nv*6+nt*6,nv);
+    const pos=new Float32Array(nv*3);for(let i=0;i<nv*3;i++){const k=i%3;pos[i]=lo[k]+q[i]/65535*(hi[k]-lo[k])}
+    const ao=Float32Array.from(a8,x=>x/255),nor=vertexNormals(pos,idx);
+    const s=loopSubdivide(pos,idx,ao),sn=vertexNormals(s.pos,s.idx);
+    return {thinker:{pos:s.pos,nor:sn,ao:s.a,cur:SCULPT.curvature(s.pos,sn,s.idx),idx:s.idx},small:{pos,nor,ao,cur:SCULPT.curvature(pos,nor,idx),idx}}}
+  catch(e){return null}}
+function sculptJobs(figure){const nW=clamp((navigator.hardwareConcurrency||4)-1,2,6),jobs=[];
+  if(figure){for(let p=0;p<nW;p++)jobs.push({key:'thinker',name:'thinker',h:H_FINE,part:p,parts:nW,w:3});
+    jobs.push({key:'small',name:'thinker',h:.012,part:0,parts:1,w:.4},{key:'rock',name:'rock',h:.011,part:0,parts:1,w:.6})}
+  else jobs.push({key:'rock',name:'plate',h:.008,part:0,parts:1,w:.6});
+  jobs.push({key:'shade',name:'shade',h:.013,part:0,parts:1,w:.3});return jobs}
+function sculptAll(jobs,onProg){
   return new Promise(resolve=>{
-    const nW=clamp((navigator.hardwareConcurrency||4)-1,2,6);
-    const jobs=[];for(let p=0;p<nW;p++)jobs.push({key:'thinker',name:'thinker',h:H_FINE,part:p,parts:nW,w:3});
-    jobs.push({key:'small',name:'thinker',h:.012,part:0,parts:1,w:.4},{key:'rock',name:'rock',h:.011,part:0,parts:1,w:.6},{key:'shade',name:'shade',h:.013,part:0,parts:1,w:.3});
+    const nW=Math.min(jobs.length,clamp((navigator.hardwareConcurrency||4)-1,2,6));
     const prog=jobs.map(()=>0),tot=jobs.reduce((s,j)=>s+j.w,0);const out={};let left=jobs.length;
     const report=()=>onProg(jobs.reduce((s,j,i)=>s+j.w*prog[i],0)/tot);
-    const finish=()=>{const res={};for(const k of ['thinker','small','rock','shade'])res[k]=SCULPT.assemble(out[k].sort((a,b)=>a.part-b.part).map(o=>o.r));resolve(res)};
+    const finish=()=>{const res={};for(const k in out)res[k]=SCULPT.assemble(out[k].sort((a,b)=>a.part-b.part).map(o=>o.r));resolve(res)};
     let url=null,workers=[],failed=false;
     // fallback: sculpt on the main thread, one job per tick
-    const mainThread=()=>{out.thinker=out.small=out.rock=out.shade=undefined;for(const k in out)delete out[k];prog.fill(0);let i=0;
-      const step=()=>{const j=jobs[i];const M=SCULPT.MODELS[j.name]();const r=SCULPT.meshPart(M,j.h,j.part,j.parts);(out[j.key]=out[j.key]||[]).push({part:j.part,r});prog[i]=1;report();if(++i<jobs.length)setTimeout(step,0);else finish()};setTimeout(step,30)};
+    const mainThread=()=>{for(const k in out)delete out[k];prog.fill(0);let i=0;
+      const step=()=>{const j=jobs[i];const M=SCULPT.MODELS[j.name](j.h);const r=SCULPT.meshPart(M,j.h,j.part,j.parts);(out[j.key]=out[j.key]||[]).push({part:j.part,r});prog[i]=1;report();if(++i<jobs.length)setTimeout(step,0);else finish()};setTimeout(step,30)};
     try{url=URL.createObjectURL(new Blob(['('+SCULPT_WORKER.toString()+')()'],{type:'text/javascript'}));for(let i=0;i<nW;i++)workers.push(new Worker(url))}catch(e){workers=[]}
     if(!workers.length){mainThread();return}
     const fail=()=>{if(failed)return;failed=true;workers.forEach(w=>w.terminate());mainThread()};
@@ -1016,7 +1124,7 @@ function regionAt(pW){let best=null,bs=1e9;const pL=statue.worldToLocal(pW.clone
   return bs<1.5?best:null}
 function faceView(){const c=lm('nose'),fw=V3(...LM.L.faceFw);const dir=V3(fw.x+.32,-.05,Math.max(.6,fw.z)).normalize();const t=lm('brow').lerp(c,.5).lerp(lm('lips'),.25);closeUp(t,dir,.62)}
 function tapStatue(hit){const g=regionAt(hit.point);const n=hit.face?hit.face.normal.clone().transformDirection(hit.object.matrixWorld):V3(0,0,1);
-  if(!g){toast('근육 하나하나가 살아 있는 듯 울퉁불퉁해요. 로댕이 말한 몸의 부분을 찾아보세요.');return}
+  if(!g){if(statue.worldToLocal(hit.point.clone()).y<.5){rockTap(hit.point);return}toast('근육 하나하나가 살아 있는 듯 울퉁불퉁해요. 로댕이 말한 몸의 부분을 찾아보세요.');return}
   if(g.face&&cam.d>1.4){faceView();toast('얼굴로 다가갔어요. 이마, 콧구멍, 입술을 하나씩 눌러 보세요.');return}
   if(g.info){toast(g.info);pulseAt(hit.point,0x9fb4ff);return}
   pulseAt(hit.point);
@@ -1152,10 +1260,11 @@ function up(e){if(!ptrs.has(e.pointerId))return;ptrs.delete(e.pointerId);if(ptrs
 cv.addEventListener('pointerup',up);cv.addEventListener('pointercancel',up);
 cv.addEventListener('wheel',e=>{e.preventDefault();if(!S.started)return;cam.auto=false;cam.goal.d=cam.goal.d*Math.exp(e.deltaY*.0012)},{passive:false});
 function castAt(x,y){ndc.set(x/innerWidth*2-1,-(y/innerHeight)*2+1);ray.setFromCamera(ndc,camera);const h=ray.intersectObjects(hits,false);return h.length?h[0]:null}
+function rockTap(p){pulseAt(p,0x9fb4ff);toast('거친 바위예요. 인물과 바위가 한 덩어리의 청동으로 부어져 만들어졌어요.')}
 function tap(x,y){if(!S.started||modalOpen)return;cam.auto=false;const h=castAt(x,y);if(!h)return;const t=h.object.userData.type;
   if(S.escaped&&t!=='statue')return;
   if(t==='statue')tapStatue(h);
-  else if(t==='rock'){const g=regionAt(h.point);if(g&&g.part==='toes'){tapStatue(h);return}pulseAt(h.point,0x9fb4ff);toast('거친 바위예요. 인물과 바위가 한 덩어리의 청동으로 부어져 만들어졌어요.')}
+  else if(t==='rock'){const g=regionAt(h.point);if(g&&g.part==='toes'){tapStatue(h);return}rockTap(h.point)}
   else if(t==='gates'||t==='poet'||t==='shades')tapGates(t);
   else if(t==='plaque')tapPlaque();
   else if(t==='pedestal')toast('검은 화강암 받침대예요. 앞면의 청동 명판을 눌러 보세요.');
@@ -1176,7 +1285,9 @@ $('team').addEventListener('keydown',e=>{if(e.key==='Enter'&&ready)begin(false)}
 $('resumeBtn').onclick=()=>{const s=loadSaved();if(s&&ready){S=Object.assign(freshState(),s);$('team').value=S.team;begin(true)}};
 if(loadSaved())$('resumeBtn').hidden=false;
 
-sculptAll(p=>{$('castBar').style.width=(p*100).toFixed(1)+'%';$('startBtn').textContent=`조각을 주조하는 중… ${Math.round(p*100)}%`}).then(res=>{
+// the scanned bronze when it can be fetched (the rock is part of the scan: only its base plate is sculpted), else the sculpted figure
+loadScan().then(scan=>{if(scan)LM=SCAN_LM;
+  return sculptAll(sculptJobs(!scan),p=>{$('castBar').style.width=(p*100).toFixed(1)+'%';$('startBtn').textContent=`조각을 주조하는 중… ${Math.round(p*100)}%`}).then(res=>Object.assign(res,scan||{}))}).then(res=>{
   addStatue(res);ready=true;$('startBtn').disabled=false;$('startBtn').textContent='탈출 시작';$('castBar').parentElement.style.visibility='hidden';if(DEBUG)window.__ready=true});
 
 /* ================= loop ================= */
